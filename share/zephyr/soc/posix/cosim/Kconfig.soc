@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_COSIM
+	bool "Native POSIX port"
+	select ARCH_POSIX
+	select SYSIO_HOOK
+	help
+	  SOC for to the POSIX arch that enables co-simulation with an HDL simulation
+	  environment.

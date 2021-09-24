@@ -30,6 +30,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 // #include <sys/sys_io.h>
 #include <arch/posix/posix_soc_if.h>
@@ -39,6 +40,9 @@
 #include "posix_core.h"
 #include "posix_arch_internal.h"
 #include "kernel_internal.h"
+#include <devicetree.h>
+#include "tblink_rpc/tblink_rpc.h"
+#include "tblink_rpc/loader.h"
 
 #define POSIX_ARCH_SOC_DEBUG_PRINTS 0
 
@@ -323,23 +327,31 @@ void sys_write8_impl(uint8_t data, mm_reg_t addr) {
 	fprintf(stdout, "hook\n");
 }
 
+void sys_write32_impl(uint32_t data, mm_reg_t addr) {
+	fprintf(stdout, "hook32\n");
+}
+
 int main(int argc, char **argv) {
-//	run_native_tasks(_NATIVE_PRE_BOOT_1_LEVEL);
+	run_native_tasks(_NATIVE_PRE_BOOT_1_LEVEL);
 
 //	native_handle_cmd_line(argc, argv);
 
-//	run_native_tasks(_NATIVE_PRE_BOOT_2_LEVEL);
+	run_native_tasks(_NATIVE_PRE_BOOT_2_LEVEL);
 
 //	hwm_init();
 
-//	run_native_tasks(_NATIVE_PRE_BOOT_3_LEVEL);
+	run_native_tasks(_NATIVE_PRE_BOOT_3_LEVEL);
 
 	sys_write8_hook_install(&sys_write8_impl);
+	sys_write32_hook_install(&sys_write32_impl);
 	sys_write8(5, 0x0);
+
+	//
+	tblink_rpc_core::ITbLink *tblink = get_tblink("foo.so");
 
 	posix_boot_cpu();
 
-//	run_native_tasks(_NATIVE_FIRST_SLEEP_LEVEL);
+	run_native_tasks(_NATIVE_FIRST_SLEEP_LEVEL);
 
 //	hwm_main_loop();
 

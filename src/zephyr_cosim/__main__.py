@@ -12,6 +12,14 @@ from zephyr_cosim.cmd_gen_board import gen_board
 
 def cmd_soc_root(args):
     print("%s" % os.path.join(get_share(), "zephyr"))
+    
+def cmd_sv_files(args):
+    share = get_share()
+    
+    tblink_rpc_sv = os.path.join(
+        os.path.dirname(share),
+        "packages/tblink-rpc-hdl/src/hvl/tblink_rpc.sv")
+    print("%s" % (tblink_rpc_sv,))
 
 def getparser():
     parser = argparse.ArgumentParser()
@@ -33,6 +41,10 @@ def getparser():
     gen_board_cmd.add_argument("-f", "--force",
         dest="force", action="store_true",
         help="Forces overwrite of an existing board directory")
+    
+    sv_files_cmd = subparser.add_parser("sv-files",
+        help="Returns the list of SystemVerilog files to compile")
+    sv_files_cmd.set_defaults(func=cmd_sv_files)
     
     
     return parser

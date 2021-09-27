@@ -3,7 +3,8 @@
 config SOC_COSIM
 	bool "Native POSIX port"
 	select ARCH_POSIX
-	select SYSIO_HOOK
+	select CPLUSPLUS
+	select LIB_CPLUSPLUS
 	help
 	  SOC for to the POSIX arch that enables co-simulation with an HDL simulation
 	  environment.

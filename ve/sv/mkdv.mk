@@ -47,7 +47,7 @@ $(MKDV_CACHEDIR)/sw_tests : $(MKDV_CACHEDIR)/zephyr
 		-DBOARD_ROOT=$(MKDV_CACHEDIR)/zephyr \
 		-DBOARD=sv_smoke_64
 	$(Q) PATH=$(PACKAGES_DIR)/python/bin:$(PATH) \
-		$(MAKE) -j`nproc` -C $(MKDV_CACHEDIR)/sw_tests || rm -rf $@
+		$(MAKE) VERBOSE=1 -j`nproc` -C $(MKDV_CACHEDIR)/sw_tests || rm -rf $@
 	
 
 

@@ -22,10 +22,23 @@ endif()
 zephyr_library_sources(
 	irq_ctrl.c
 	irq_handler.c
-	soc.cpp
+	soc.c
 	tracing.c
+	EndpointServicesZephyrCosim.cpp
+	zephyr_cosim.cpp
 #	${TBLINK_RPC_SRCS}
 	)
+
+# Forcing this include prevents static-inline implementations of
+# sys_read/sys_write functions from being used, allowing us to
+# hook them
+#
+# Note: the SHELL prefix prevents cmake from de-duplicating the
+# '-include' option, which may have been provided elsewhere
+zephyr_compile_options(
+  "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/zephyr_cosim_sysrw.h"
+  )
+
 
 zephyr_library_include_directories(
   ${ZEPHYR_BASE}/kernel/include

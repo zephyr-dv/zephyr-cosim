@@ -17,8 +17,8 @@ def cmd_sv_files(args):
     share = get_share()
     
     tblink_rpc_sv = os.path.join(
-        os.path.dirname(share),
-        "packages/tblink-rpc-hdl/src/hvl/tblink_rpc.sv")
+        share,
+        "sv/zephyr_cosim_uvm.sv")
     print("%s" % (tblink_rpc_sv,))
 
 def getparser():

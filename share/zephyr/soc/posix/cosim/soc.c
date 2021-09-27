@@ -35,14 +35,13 @@
 // #include <sys/sys_io.h>
 #include <arch/posix/posix_soc_if.h>
 
-#include "../../posix/cosim/posix_board_if.h"
-#include "../../posix/cosim/posix_soc.h"
+#include "posix_board_if.h"
+#include "posix_soc.h"
 #include "posix_core.h"
 #include "posix_arch_internal.h"
 #include "kernel_internal.h"
 #include <devicetree.h>
-#include "tblink_rpc/tblink_rpc.h"
-#include "tblink_rpc/loader.h"
+#include "zephyr_cosim.h"
 
 #define POSIX_ARCH_SOC_DEBUG_PRINTS 0
 
@@ -306,6 +305,8 @@ void posix_exit(int exit_code)
 {
 	static int max_exit_code;
 
+	fprintf(stdout, "posix_exit\n");
+
 	max_exit_code = MAX(exit_code, max_exit_code);
 	/*
 	 * posix_soc_clean_up may not return if this is called from a SW thread,
@@ -323,6 +324,7 @@ uint32_t sys_clock_elapsed(void)
 	return 0;
 }
 
+#ifdef UNDEFINED
 void sys_write8_impl(uint8_t data, mm_reg_t addr) {
 	fprintf(stdout, "hook\n");
 }
@@ -330,8 +332,15 @@ void sys_write8_impl(uint8_t data, mm_reg_t addr) {
 void sys_write32_impl(uint32_t data, mm_reg_t addr) {
 	fprintf(stdout, "hook32\n");
 }
+#endif
 
 int main(int argc, char **argv) {
+
+	if (zephyr_cosim_init(argc, argv) == -1) {
+		fprintf(stdout, "Error: failed to initialize cosim link\n");
+		return 1;
+	}
+
 	run_native_tasks(_NATIVE_PRE_BOOT_1_LEVEL);
 
 //	native_handle_cmd_line(argc, argv);
@@ -342,12 +351,14 @@ int main(int argc, char **argv) {
 
 	run_native_tasks(_NATIVE_PRE_BOOT_3_LEVEL);
 
+#ifdef UNDEFINED
 	sys_write8_hook_install(&sys_write8_impl);
 	sys_write32_hook_install(&sys_write32_impl);
 	sys_write8(5, 0x0);
+#endif
 
 	//
-	tblink_rpc_core::ITbLink *tblink = get_tblink("foo.so");
+//	tblink_rpc_core::ITbLink *tblink = get_tblink("foo.so");
 
 	posix_boot_cpu();
 

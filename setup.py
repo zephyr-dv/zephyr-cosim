@@ -3,6 +3,7 @@ import os, stat
 from setuptools import setup
 from setuptools.command.install import install
 
+version = '0.0.1'
 
 setup(
   name = "zephyr-cosim",

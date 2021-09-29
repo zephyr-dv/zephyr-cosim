@@ -25,6 +25,7 @@ zephyr_library_sources(
 	soc.c
 	tracing.c
 	EndpointServicesZephyrCosim.cpp
+	ZephyrCosimIf.cpp
 	zephyr_cosim.cpp
 #	${TBLINK_RPC_SRCS}
 	)

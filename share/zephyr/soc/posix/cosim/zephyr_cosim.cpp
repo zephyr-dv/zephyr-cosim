@@ -10,36 +10,45 @@
 #include "tblink_rpc/tblink_rpc.h"
 #include "tblink_rpc/loader.h"
 #include "EndpointServicesZephyrCosim.h"
+#include "ZephyrCosimIf.h"
 
 using namespace tblink_rpc_core;
 
+static ZephyrCosimIf *prv_cosim_if = 0;
+
 uint8_t sys_read8(mem_addr_t addr) {
 	fprintf(stdout, "sys_read8\n");
-	;
+	fflush(stdout);
 }
 
 void sys_write8(uint8_t data, mem_addr_t addr) {
 	fprintf(stdout, "sys_write8\n");
+	fflush(stdout);
 	;
 }
 
 uint16_t sys_read16(mem_addr_t addr) {
 	fprintf(stdout, "sys_read16\n");
+	fflush(stdout);
 	;
 }
 
 void sys_write16(uint16_t data, mem_addr_t addr) {
 	fprintf(stdout, "sys_write16\n");
+	fflush(stdout);
 	;
 }
 
 uint32_t sys_read32(mem_addr_t addr) {
 	fprintf(stdout, "sys_read32\n");
+	fflush(stdout);
 	;
 }
 
 void sys_write32(uint32_t data, mem_addr_t addr) {
 	fprintf(stdout, "sys_write32\n");
+	fflush(stdout);
+	prv_cosim_if->write32(data, addr);
 	;
 }
 
@@ -81,8 +90,12 @@ int zephyr_cosim_init(int argc, char **argv) {
 		return -1;
 	}
 
+	prv_cosim_if = new ZephyrCosimIf(ep);
+
 	// TODO: register API type and inst
 
+	fprintf(stdout, "--> build_complete\n");
+	fflush(stdout);
 	if (ep->build_complete() == -1) {
 		fprintf(stdout, "Error: build phase failed: %s\n", ep->last_error().c_str());
 		return -1;
@@ -94,7 +107,11 @@ int zephyr_cosim_init(int argc, char **argv) {
 			return -1;
 		}
 	}
+	fprintf(stdout, "<-- build_complete\n");
+	fflush(stdout);
 
+	fprintf(stdout, "--> connect_complete\n");
+	fflush(stdout);
 	if (ep->connect_complete() == -1) {
 		fprintf(stdout, "Error: connect phase failed: %s\n", ep->last_error().c_str());
 		return -1;
@@ -107,7 +124,8 @@ int zephyr_cosim_init(int argc, char **argv) {
 		}
 	}
 
-
+	fprintf(stdout, "<-- connect_complete\n");
+	fflush(stdout);
 
 
 	return 0;

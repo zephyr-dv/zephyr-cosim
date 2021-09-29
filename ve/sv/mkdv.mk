@@ -1,9 +1,11 @@
 MKDV_MK := $(abspath $(lastword $(MAKEFILE_LIST)))
 TEST_DIR := $(dir $(MKDV_MK))
 MKDV_TOOL ?= questa
-SOC_ROOT:=$(shell PATH=$(PACKAGES_DIR)/python/bin:$(PATH) python3 -m zephyr_cosim soc-root)
-TBLINK_UVM_FILES:=$(shell PATH=$(PACKAGES_DIR)/python/bin:$(PATH) python3 -m tblink_rpc_hdl files sv-uvm)
-TBLINK_PLUGIN:=$(shell PATH=$(PACKAGES_DIR)/python/bin:$(PATH) python3 -m tblink_rpc_hdl simplugin)
+PACKAGES_DIR:=$(abspath $(TEST_DIR)/../..)/packages
+
+SOC_ROOT:=$(shell PATH=$(PACKAGES_DIR)/python/bin:$(PATH) PYTHONPATH=$(abspath $(TEST_DIR)/../..)/src python3 -m zephyr_cosim soc-root)
+TBLINK_UVM_FILES:=$(shell PATH=$(PACKAGES_DIR)/python/bin:$(PATH) PYTHONPATH=$(PACKAGES_DIR)/tblink-rpc-hdl/ext python3 -m tblink_rpc_hdl files sv-uvm)
+TBLINK_PLUGIN:=$(shell PATH=$(PACKAGES_DIR)/python/bin:$(PATH) PYTHONPATH=$(PACKAGES_DIR)/tblink-rpc-hdl/ext python3 -m tblink_rpc_hdl simplugin)
 ZEPHYR_COSIM_SV_FILES:=$(shell PATH=$(PACKAGES_DIR)/python/bin:$(PATH) python3 -m zephyr_cosim sv-files)
 
 MKDV_BUILD_DEPS += $(MKDV_CACHEDIR)/zephyr

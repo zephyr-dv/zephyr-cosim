@@ -14,6 +14,8 @@ extern "C" {
 
 int zephyr_cosim_init(int argc, char **argv);
 
+void zephyr_cosim_exit(int exit_code);
+
 
 #ifdef __cplusplus
 }

@@ -314,6 +314,9 @@ void posix_exit(int exit_code)
 	 * ASAP from the HW thread
 	 */
 	posix_soc_clean_up();
+
+	zephyr_cosim_exit(exit_code);
+
 //	hwm_cleanup();
 //	native_cleanup_cmd_line();
 	exit(max_exit_code);
@@ -360,10 +363,19 @@ int main(int argc, char **argv) {
 	//
 //	tblink_rpc_core::ITbLink *tblink = get_tblink("foo.so");
 
+	fprintf(stdout, "--> posix_boot_cpu\n");
+	fflush(stdout);
 	posix_boot_cpu();
+	fprintf(stdout, "<-- posix_boot_cpu\n");
+	fflush(stdout);
 
+	fprintf(stdout, "--> NATIVE_FIRST_SLEEP_LEVEL\n");
+	fflush(stdout);
 	run_native_tasks(_NATIVE_FIRST_SLEEP_LEVEL);
+	fprintf(stdout, "<-- NATIVE_FIRST_SLEEP_LEVEL\n");
+	fflush(stdout);
 
+	zephyr_cosim_exit(0);
 //	hwm_main_loop();
 
 	/* This line should be unreachable */

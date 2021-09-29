@@ -15,6 +15,7 @@
 using namespace tblink_rpc_core;
 
 static ZephyrCosimIf *prv_cosim_if = 0;
+static IEndpoint *prv_endpoint = 0;
 
 uint8_t sys_read8(mem_addr_t addr) {
 	fprintf(stdout, "sys_read8\n");
@@ -52,6 +53,16 @@ void sys_write32(uint32_t data, mem_addr_t addr) {
 	;
 }
 
+void zephyr_cosim_exit(int exit_code) {
+	fprintf(stdout, "zephyr_cosim_exit: %d\n", exit_code);
+	fflush(stdout);
+
+	if (prv_endpoint) {
+		// Notify that we're exiting
+		prv_endpoint->shutdown();
+	}
+}
+
 int zephyr_cosim_init(int argc, char **argv) {
 	std::string tblink_rpc_lib;
 
@@ -84,25 +95,25 @@ int zephyr_cosim_init(int argc, char **argv) {
 	}
 
 	EndpointServicesZephyrCosim *services = new EndpointServicesZephyrCosim();
-	IEndpoint *ep = result.first;
-	if (ep->init(services, 0) == -1) {
+	prv_endpoint = result.first;
+	if (prv_endpoint->init(services, 0) == -1) {
 		fprintf(stdout, "Initialization failed: %s\n", result.first->last_error().c_str());
 		return -1;
 	}
 
-	prv_cosim_if = new ZephyrCosimIf(ep);
+	prv_cosim_if = new ZephyrCosimIf(prv_endpoint);
 
 	// TODO: register API type and inst
 
 	fprintf(stdout, "--> build_complete\n");
 	fflush(stdout);
-	if (ep->build_complete() == -1) {
-		fprintf(stdout, "Error: build phase failed: %s\n", ep->last_error().c_str());
+	if (prv_endpoint->build_complete() == -1) {
+		fprintf(stdout, "Error: build phase failed: %s\n", prv_endpoint->last_error().c_str());
 		return -1;
 	}
 
-	while (!ep->is_build_complete() == 0) {
-		if (ep->process_one_message() == -1) {
+	while (!prv_endpoint->is_build_complete() == 0) {
+		if (prv_endpoint->process_one_message() == -1) {
 			fprintf(stdout, "Error: failed waiting for build phase completion\n");
 			return -1;
 		}
@@ -112,13 +123,13 @@ int zephyr_cosim_init(int argc, char **argv) {
 
 	fprintf(stdout, "--> connect_complete\n");
 	fflush(stdout);
-	if (ep->connect_complete() == -1) {
-		fprintf(stdout, "Error: connect phase failed: %s\n", ep->last_error().c_str());
+	if (prv_endpoint->connect_complete() == -1) {
+		fprintf(stdout, "Error: connect phase failed: %s\n", prv_endpoint->last_error().c_str());
 		return -1;
 	}
 
-	while (!ep->is_connect_complete() == 0) {
-		if (ep->process_one_message() == -1) {
+	while (!prv_endpoint->is_connect_complete() == 0) {
+		if (prv_endpoint->process_one_message() == -1) {
 			fprintf(stdout, "Error: failed waiting for connect phase completion\n");
 			return -1;
 		}

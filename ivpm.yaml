@@ -4,8 +4,6 @@ package:
   version: 0.0.1
 
   deps:
-  - name: tblink-rpc-core
-    url: https://github.com/tblink-rpc/tblink-rpc-core.git
   - name: tblink-rpc-hdl
     url: https://github.com/tblink-rpc/tblink-rpc-hdl.git
   - name: vte
@@ -13,12 +11,16 @@ package:
   - name: zephyr
     url: https://github.com/zephyr-cosim/zephyr.git
     branch: cosim
+  - name: vte
+    url: https://github.com/fvutils/vte.git
+  - name: pyelftools
+    src: pypi
+  - name: pyyaml
+    src: pypi
 
   dev-deps:
   - name: googletest
     url: https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz
-  - name: tblink-rpc-core
-    url: https://github.com/tblink-rpc/tblink-rpc-core.git
   - name: tblink-rpc-hdl
     url: https://github.com/tblink-rpc/tblink-rpc-hdl.git
   - name: mkdv

@@ -8,11 +8,6 @@ package:
     url: https://github.com/tblink-rpc/tblink-rpc-hdl.git
   - name: vte
     url: https://github.com/fvutils/vte.git
-  - name: zephyr
-    url: https://github.com/zephyr-cosim/zephyr.git
-    branch: cosim
-  - name: vte
-    url: https://github.com/fvutils/vte.git
   - name: pyelftools
     src: pypi
   - name: pyyaml

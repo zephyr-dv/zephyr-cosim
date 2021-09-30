@@ -68,7 +68,20 @@ void ZephyrCosimIf::write32(uint32_t data, uint64_t addr) {
 }
 
 uint32_t ZephyrCosimIf::read32(uint64_t addr) {
-	;
+	IParamValVec *params = m_ifinst->mkValVec();
+	params->push_back(m_ifinst->mkValIntU(addr, 64));
+
+
+	fprintf(stdout, "--> invoke::read32\n");
+	fflush(stdout);
+	IParamVal *ret = m_ifinst->invoke(m_read32, params);
+	fprintf(stdout, "<-- invoke::read32 %p\n", ret);
+	fflush(stdout);
+
+	uint32_t rval = dynamic_cast<IParamValInt *>(ret)->val_u();
+	delete ret;
+
+	return rval;
 }
 
 

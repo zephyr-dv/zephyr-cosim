@@ -41,27 +41,65 @@ package zephyr_cosim_uvm;
 		virtual task invoke_b(input InvokeInfo ii);
 			chandle ret = null;
 			chandle method_t = tblink_rpc_InvokeInfo_method(ii.m_hndl);
+			chandle ifinst = tblink_rpc_InvokeInfo_ifinst(ii.m_hndl);
 			longint unsigned id = tblink_rpc_IMethodType_id(method_t);
-			$display("Invoke %0d", id);
+			IParamValVector params = ii.params();
+			IParamValInt addr_p;
+			IParamValInt data_p;
 			
 			case (id)
 				sys_read8: begin
-					$display("TODO: read8");
+					byte unsigned data;
+					$cast(addr_p, params.at(0));
+					
+					m_agent.sys_read8(data, addr_p.val_u());
+					ret = tblink_rpc_IInterfaceInst_mkValIntU(
+							ifinst, 
+							data,
+							8);
 				end
 				sys_write8: begin
-					$display("TODO: write8");
+					$cast(data_p, params.at(0));
+					$cast(addr_p, params.at(1));
+					
+					m_agent.sys_write8(
+							data_p.val_u(),
+							addr_p.val_u());
 				end
 				sys_read16: begin
-					$display("TODO: read16");
+					shortint unsigned data;
+					$cast(addr_p, params.at(0));
+					
+					m_agent.sys_read16(data, addr_p.val_u());
+					ret = tblink_rpc_IInterfaceInst_mkValIntU(
+							ifinst, 
+							data,
+							16);
 				end
 				sys_write16: begin
-					$display("TODO: write16");
+					$cast(data_p, params.at(0));
+					$cast(addr_p, params.at(1));
+					
+					m_agent.sys_write16(
+							data_p.val_u(),
+							addr_p.val_u());
 				end
 				sys_read32: begin
-					$display("TODO: read32");
+					int unsigned data;
+					$cast(addr_p, params.at(0));
+					
+					m_agent.sys_read32(data, addr_p.val_u());
+					ret = tblink_rpc_IInterfaceInst_mkValIntU(
+							ifinst, 
+							data,
+							32);
 				end
 				sys_write32: begin
-					$display("TODO: write32");
+					$cast(data_p, params.at(0));
+					$cast(addr_p, params.at(1));
+					m_agent.sys_write32(
+							data_p.val_u(),
+							addr_p.val_u());
 				end
 			endcase
 			
@@ -171,9 +209,31 @@ package zephyr_cosim_uvm;
 		
 		chandle				m_endpoint;
 		zephyr_cosim_if		m_if;
+		uvm_sequencer		m_seqr;
+		uvm_reg_adapter		m_adapter;
 		
 		function new(string name, uvm_component parent);
 			super.new(name, parent);
+		endfunction
+	
+		/**
+		 * Function: set_sequencer
+		 * 
+		 * Configures the sequencer and register adapter
+		 * used by this agent
+		 * 
+		 * Parameters:
+		 * - uvm_sequencer seqr 
+		 * - uvm_reg_adapter reg_adapter 
+		 * 
+		 * Returns:
+		 *   void
+		 */
+		function void set_sequencer(
+			uvm_sequencer			seqr,
+			uvm_reg_adapter			reg_adapter);
+			m_seqr = seqr;
+			m_adapter = reg_adapter;
 		endfunction
 		
 		function void build_phase(uvm_phase phase);
@@ -241,11 +301,16 @@ package zephyr_cosim_uvm;
 		endfunction
 		
 		task run_phase(uvm_phase phase);
+			if (m_seqr == null || m_adapter == null) begin
+				`uvm_fatal("zephyr-cosim-agent", "sequencer not configured");
+				return;
+			end
+			
 			phase.raise_objection(this, "Main", 1);
 			$display("--> start");
 			tblink_rpc_IEndpoint_start(m_endpoint);
 			$display("<-- start");
-			phase.drop_objection(this, "Main", 1);
+//			phase.drop_objection(this, "Main", 1);
 		endtask
 		
 		task sys_read8(
@@ -259,23 +324,62 @@ package zephyr_cosim_uvm;
 		endtask
 
 		task sys_read16(
-			output byte unsigned		data,
+			output shortint unsigned	data,
 			input longint unsigned		addr);
 		endtask
 		
 		task sys_write16(
-			input byte unsigned			data,
+			input shortint unsigned		data,
 			input longint unsigned		addr);
 		endtask
 		
 		task sys_read32(
-			output byte unsigned		data,
+			output int unsigned			data,
 			input longint unsigned		addr);
+			uvm_reg_bus_op rw_access;
+			uvm_sequence_item bus_req;
+			uvm_sequence_base seq = new("default_parent_seq");
+			$display("Agent sys_write32: 'h%08h 'h%08h", data, addr);
+
+			rw_access.kind    = UVM_READ;
+			rw_access.addr    = addr;
+			rw_access.n_bits  = 32;
+			rw_access.byte_en = 'hF;
+
+			bus_req = m_adapter.reg2bus(rw_access);
+			
+			$display("[%0t] --> Seqr Access", $time);
+			seq.set_sequencer(m_seqr);
+			seq.start_item(bus_req);
+			seq.finish_item(bus_req);
+			$display("[%0t] <-- Seqr Access", $time);			
+			
+			 m_adapter.bus2reg(bus_req, rw_access);
+			
+			data = rw_access.data;
 		endtask
 		
 		task sys_write32(
-			input byte unsigned			data,
+			input int unsigned			data,
 			input longint unsigned		addr);
+			uvm_reg_bus_op rw_access;
+			uvm_sequence_item bus_req;
+			uvm_sequence_base seq = new("default_parent_seq");
+			$display("Agent sys_write32: 'h%08h 'h%08h", data, addr);
+
+			rw_access.kind    = UVM_WRITE;
+			rw_access.addr    = addr;
+			rw_access.data    = data;
+			rw_access.n_bits  = 32;
+			rw_access.byte_en = 'hF;
+
+			bus_req = m_adapter.reg2bus(rw_access);
+			
+			$display("[%0t] --> Seqr Access", $time);
+			seq.set_sequencer(m_seqr);
+			seq.start_item(bus_req);
+			seq.finish_item(bus_req);
+			$display("[%0t] <-- Seqr Access", $time);
 		endtask
 		
 	endclass

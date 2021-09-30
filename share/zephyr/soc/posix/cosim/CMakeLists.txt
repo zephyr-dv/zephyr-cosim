@@ -17,6 +17,12 @@ set(JSON_RPC_DIR $ENV{PACKAGES_DIR}/json/include)
 message("  files ${TBLINK_RPC_SRCS}")
 endif()
 
+# Clear no-exceptions and no-rtti specification, since
+# the Zephyr-Cosim integration requires both
+set_property(TARGET compiler-cpp PROPERTY no_exceptions)
+set_property(TARGET compiler-cpp PROPERTY no_rtti)
+
+
 #file(GLOB_RECURSE TBLINK_RPC_SRCS ${TBLINK_RPC_C_DIR}/*.cpp)
 
 zephyr_library_sources(

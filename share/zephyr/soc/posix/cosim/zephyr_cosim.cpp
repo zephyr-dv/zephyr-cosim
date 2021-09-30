@@ -43,14 +43,17 @@ void sys_write16(uint16_t data, mem_addr_t addr) {
 uint32_t sys_read32(mem_addr_t addr) {
 	fprintf(stdout, "sys_read32\n");
 	fflush(stdout);
-	;
+	uint32_t val = prv_cosim_if->read32(addr);
+	fprintf(stdout, "sys_read32: val=0x%08x\n", val);
+	fflush(stdout);
+
+	return val;
 }
 
 void sys_write32(uint32_t data, mem_addr_t addr) {
 	fprintf(stdout, "sys_write32\n");
 	fflush(stdout);
 	prv_cosim_if->write32(data, addr);
-	;
 }
 
 void zephyr_cosim_exit(int exit_code) {
@@ -103,6 +106,20 @@ int zephyr_cosim_init(int argc, char **argv) {
 
 	prv_cosim_if = new ZephyrCosimIf(prv_endpoint);
 
+	while (prv_endpoint->is_init() == 0) {
+		if (prv_endpoint->process_one_message() == -1) {
+			fprintf(stdout, "Error: failed waiting for init phase\n");
+			return -1;
+		}
+	}
+
+	std::vector<std::string> args = prv_endpoint->args();
+	for (std::vector<std::string>::const_iterator
+			it=args.begin();
+			it!=args.end(); it++) {
+		fprintf(stdout, "Arg: %s\n", it->c_str());
+	}
+
 	// TODO: register API type and inst
 
 	fprintf(stdout, "--> build_complete\n");
@@ -112,7 +129,7 @@ int zephyr_cosim_init(int argc, char **argv) {
 		return -1;
 	}
 
-	while (!prv_endpoint->is_build_complete() == 0) {
+	while (prv_endpoint->is_build_complete() == 0) {
 		if (prv_endpoint->process_one_message() == -1) {
 			fprintf(stdout, "Error: failed waiting for build phase completion\n");
 			return -1;
@@ -128,7 +145,7 @@ int zephyr_cosim_init(int argc, char **argv) {
 		return -1;
 	}
 
-	while (!prv_endpoint->is_connect_complete() == 0) {
+	while (prv_endpoint->is_connect_complete() == 0) {
 		if (prv_endpoint->process_one_message() == -1) {
 			fprintf(stdout, "Error: failed waiting for connect phase completion\n");
 			return -1;

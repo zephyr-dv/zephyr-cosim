@@ -43,7 +43,7 @@ package zephyr_cosim_uvm;
 			chandle method_t = tblink_rpc_InvokeInfo_method(ii.m_hndl);
 			chandle ifinst = tblink_rpc_InvokeInfo_ifinst(ii.m_hndl);
 			longint unsigned id = tblink_rpc_IMethodType_id(method_t);
-			IParamValVector params = ii.params();
+			IParamValVec params = ii.params();
 			IParamValInt addr_p;
 			IParamValInt data_p;
 			

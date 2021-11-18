@@ -30,6 +30,8 @@ public:
 
 	uint32_t read32(uint64_t addr);
 
+	void sys_irq(uint8_t num);
+
 	static tblink_rpc_core::IInterfaceType *registerType(
 			tblink_rpc_core::IEndpoint *ep);
 
@@ -48,7 +50,7 @@ private:
 	tblink_rpc_core::IMethodType				*m_read16;
 	tblink_rpc_core::IMethodType				*m_write32;
 	tblink_rpc_core::IMethodType				*m_read32;
-	tblink_rpc_core::IMethodType				*m_irq;
+	tblink_rpc_core::IMethodType				*m_sys_irq;
 
 };
 

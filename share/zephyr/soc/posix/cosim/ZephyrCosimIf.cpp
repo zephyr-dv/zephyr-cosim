@@ -31,7 +31,7 @@ ZephyrCosimIf::ZephyrCosimIf(
 	m_read16  = iftype->findMethod("sys_read16");
 	m_write32 = iftype->findMethod("sys_write32");
 	m_read32  = iftype->findMethod("sys_read32");
-	m_irq     = iftype->findMethod("irq");
+	m_sys_irq = iftype->findMethod("sys_irq");
 }
 
 ZephyrCosimIf::~ZephyrCosimIf() {
@@ -169,13 +169,13 @@ tblink_rpc_core::IInterfaceType *ZephyrCosimIf::registerType(
 
 		// irq
 		method_b = iftype_b->newMethodTypeBuilder(
-				"irq",
+				"sys_irq",
 				7,
 				0,
 				false,
 				false);
-		method_b->add_param("id",
-				iftype_b->mkTypeInt(false, 32));
+		method_b->add_param("num",
+				iftype_b->mkTypeInt(false, 8));
 		iftype_b->add_method(method_b);
 
 		iftype = ep->defineInterfaceType(iftype_b);
@@ -189,7 +189,10 @@ void ZephyrCosimIf::request_f(
 		tblink_rpc_core::IMethodType		*method,
 		intptr_t							call_id,
 		tblink_rpc_core::IParamValVec		*params) {
-	if (method == m_irq) {
+	if (method == m_sys_irq) {
 		// TODO:
+		fprintf(stdout, "TODO: IRQ\n");
+		fflush(stdout);
+		ifinst->invoke_rsp(call_id, 0);
 	}
 }

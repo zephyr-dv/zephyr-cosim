@@ -43,6 +43,7 @@ private:
 			tblink_rpc_core::IParamValVec		*params);
 
 private:
+	tblink_rpc_core::IEndpoint					*m_ep;
 	tblink_rpc_core::IInterfaceInst				*m_ifinst;
 	tblink_rpc_core::IMethodType				*m_write8;
 	tblink_rpc_core::IMethodType				*m_read8;

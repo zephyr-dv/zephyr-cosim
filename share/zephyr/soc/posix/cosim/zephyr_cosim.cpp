@@ -84,11 +84,11 @@ int zephyr_cosim_init(int argc, char **argv) {
 	tblink_rpc_core::ILaunchType *launch = tblink->findLaunchType("connect.socket");
 
 	fprintf(stdout, "launch=%p\n", launch);
-	tblink_rpc_core::ILaunchParams *params = tblink->newLaunchParams();
+	tblink_rpc_core::ILaunchParams *params = launch->newLaunchParams();
 	params->add_param("host", getenv("TBLINK_HOST"));
 	params->add_param("port", getenv("TBLINK_PORT"));
 
-	tblink_rpc_core::ILaunchType::result_t result = launch->launch(params);
+	tblink_rpc_core::ILaunchType::result_t result = launch->launch(params, 0);
 
 	if (!result.first) {
 		fprintf(stdout, "Failed: %s\n", result.second.c_str());

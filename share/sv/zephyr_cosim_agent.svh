@@ -1,4 +1,3 @@
-
 /****************************************************************************
  * zephyr_cosim_agent.svh
  ****************************************************************************/
@@ -11,6 +10,8 @@
  */
 class zephyr_cosim_agent extends uvm_component;
 	`uvm_component_utils(zephyr_cosim_agent)
+	
+	typedef class Listener;
 		
 	IEndpoint			m_endpoint;
 	IInterfaceInst		m_ifinst;
@@ -18,6 +19,8 @@ class zephyr_cosim_agent extends uvm_component;
 	uvm_sequencer		m_seqr;
 	uvm_reg_adapter		m_adapter;
 	uvm_phase			m_run_phase;
+	Listener			m_listener;
+	semaphore			m_ev_sem = new();
 		
 	function new(string name, uvm_component parent);
 		super.new(name, parent);
@@ -75,7 +78,11 @@ class zephyr_cosim_agent extends uvm_component;
 			
 			m_endpoint = launch_type.launch(
 					launch_params,
+					null,
 					errmsg);
+			
+			m_listener = new(this);
+			m_endpoint.addListener(m_listener);
 				
 			if (m_endpoint == null) begin
 				`uvm_fatal("zephyr-cosim-agent", $sformatf("Failed to launch: %0s", errmsg));
@@ -156,6 +163,7 @@ class zephyr_cosim_agent extends uvm_component;
 	endfunction
 		
 	task run_phase(uvm_phase phase);
+		int rv = 0;
 		m_run_phase = phase;
 		if (m_seqr == null || m_adapter == null) begin
 			`uvm_fatal("zephyr-cosim-agent", "sequencer not configured");
@@ -168,14 +176,27 @@ class zephyr_cosim_agent extends uvm_component;
 		tblink_rpc_start();
 		
 		$display("--> start");
-//		for (int i=0; i<16; i++) begin
-			$display("--> await_run_until_event");
-			m_endpoint.await_run_until_event();
-			$display("<-- await_run_until_event");
-			//			tblink_rpc_IEndpoint_start(m_endpoint);
-//		end
+		while (rv != -1) begin
+			$display("--> Waiting %0s", m_endpoint.comm_state());
+			while (m_endpoint.comm_state() == IEndpoint::Waiting && rv != -1) begin
+				// Should this be the '_b' variant?
+				$display("--> process_one_message");
+				rv = m_endpoint.process_one_message();
+				$display("<-- process_one_message");
+			end
+			$display("<-- Waiting %0s", m_endpoint.comm_state());
+			
+			$display("--> Released %0s", m_endpoint.comm_state());
+			while (m_endpoint.comm_state() == IEndpoint::Released) begin
+				// Should this be the '_b' variant?
+				$display("--> await_event");
+				m_ev_sem.get(1);
+				$display("<-- await_event %0s", m_endpoint.comm_state());
+			end
+			$display("<-- Released");
+		end
 		$display("<-- start");
-		//			phase.drop_objection(this, "Main", 1);
+		phase.drop_objection(this, "Main", 1);
 	endtask
 		
 	task sys_read8(
@@ -249,5 +270,19 @@ class zephyr_cosim_agent extends uvm_component;
 		seq.finish_item(bus_req);
 		$display("[%0t] <-- Seqr Access", $time);
 	endtask
+	
+	class Listener extends IEndpointListener;
+		zephyr_cosim_agent			m_agent;
+		
+		function new(zephyr_cosim_agent agent);
+			m_agent = agent;
+		endfunction
+		
+		function void event_f(IEndpointEvent ev);
+			$display("Listener::event_f");
+			m_agent.m_ev_sem.put(1);
+		endfunction
+		
+	endclass
 		
 endclass

@@ -13,6 +13,7 @@ using namespace tblink_rpc_core;
 ZephyrCosimIf::ZephyrCosimIf(
 		IEndpoint			*ep,
 		const std::string	&name) {
+	m_ep = ep;
 	IInterfaceType *iftype = registerType(ep);
 
 	m_ifinst = ep->defineInterfaceInst(
@@ -62,9 +63,29 @@ void ZephyrCosimIf::write32(uint32_t data, uint64_t addr) {
 
 	fprintf(stdout, "--> invoke::write32\n");
 	fflush(stdout);
-	m_ifinst->invoke(m_write32, params);
+
+	bool complete = false;
+
+	m_ifinst->invoke_nb(
+			m_write32,
+			params,
+			[&](IParamVal *retval) {
+				complete = true;
+			});
 	fprintf(stdout, "<-- invoke::write32\n");
 	fflush(stdout);
+
+	while (!complete) {
+		fprintf(stdout, "--> process_one_message\n");
+		fflush(stdout);
+		int rv = m_ep->process_one_message();
+		fprintf(stdout, "<-- process_one_message %d\n", rv);
+		fflush(stdout);
+
+		if (rv == -1) {
+			break;
+		}
+	}
 }
 
 uint32_t ZephyrCosimIf::read32(uint64_t addr) {
@@ -74,7 +95,25 @@ uint32_t ZephyrCosimIf::read32(uint64_t addr) {
 
 	fprintf(stdout, "--> invoke::read32\n");
 	fflush(stdout);
-	IParamVal *ret = m_ifinst->invoke(m_read32, params);
+	bool complete = false;
+	IParamVal *ret = 0;
+
+	m_ifinst->invoke_nb(
+			m_read32,
+			params,
+			[&](IParamVal *retval) {
+				complete = true;
+				ret = retval->clone();
+			});
+
+	while (!complete) {
+		int rv = m_ep->process_one_message();
+
+		if (rv == -1) {
+			break;
+		}
+	}
+
 	fprintf(stdout, "<-- invoke::read32 %p\n", ret);
 	fflush(stdout);
 

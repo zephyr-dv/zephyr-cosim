@@ -37,11 +37,13 @@ class zephyr_cosim_services extends SVEndpointServices;
 		
 	virtual function void idle();
 		$display("--> services::idle");
+		/*
 		while (!m_run_until_event) begin
 			if (m_ep.process_one_message() == -1) begin
 				break;
 			end
 		end
+		 */
 		$display("<-- services::idle");
 	endfunction
 

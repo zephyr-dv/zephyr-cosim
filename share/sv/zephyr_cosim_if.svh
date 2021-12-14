@@ -34,6 +34,7 @@ class zephyr_cosim_if extends IInterfaceImpl;
 	function void irq(int num);
 		IParamValVec params = m_agent.m_ifinst.mkValVec();
 		params.push_back(m_agent.m_ifinst.mkValIntU(num, 8));
+		$display("m_sys_irq_t=%0p params=%0p", m_sys_irq_t, params);
 		void'(m_agent.m_ifinst.invoke_nb(
 				m_sys_irq_t,
 				params));

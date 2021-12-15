@@ -1,0 +1,29 @@
+CAPI=2:
+#****************************************************************************
+#* zephyr-cosim.core
+#****************************************************************************
+
+name: zephyr-dv::zephyr-cosim:0.1
+
+filesets:
+
+  uvm:
+    files:
+      - sv/zephyr_cosim_uvm.sv
+    file_type: verilogSource
+    depend:
+      - tblink-rpc::tblink-rpc-hdl
+    
+  zephyr:
+    files:
+      - zephyr
+    file_type: zephyrSoCRoot
+    
+targets:
+
+  default:
+    filesets:
+      - uvm
+      - zephyr
+    
+      

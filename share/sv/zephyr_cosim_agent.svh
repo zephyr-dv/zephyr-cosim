@@ -12,6 +12,9 @@ class zephyr_cosim_agent extends uvm_component;
 	`uvm_component_utils(zephyr_cosim_agent)
 	
 	typedef class Listener;
+	
+	// TODO: want analysis
+	uvm_analysis_imp #(int,zephyr_cosim_agent)	irq_imp;
 		
 	IEndpoint			m_endpoint;
 	IInterfaceInst		m_ifinst;
@@ -21,9 +24,12 @@ class zephyr_cosim_agent extends uvm_component;
 	uvm_phase			m_run_phase;
 	Listener			m_listener;
 	semaphore			m_ev_sem = new();
+	semaphore			m_rw_lock = new(1);
+	mailbox #(int)		m_irq_q = new();
 		
 	function new(string name, uvm_component parent);
 		super.new(name, parent);
+		irq_imp = new("irq_imp", this);
 	endfunction
 	
 	/**
@@ -46,8 +52,10 @@ class zephyr_cosim_agent extends uvm_component;
 		m_adapter = reg_adapter;
 	endfunction
 	
-	function void irq(int num);
-		m_if.irq(num);
+	function void write(int trans);
+		$display("--> Queue IRQ %0d", trans);
+		void'(m_irq_q.try_put(trans));
+		$display("<-- Queue IRQ %0d", trans);
 	endfunction
 		
 	function void build_phase(uvm_phase phase);
@@ -118,10 +126,12 @@ class zephyr_cosim_agent extends uvm_component;
 					`uvm_info("zephyr-cosim-agent", "build phase completed", UVM_LOW);
 					break;
 				end else begin
+					$display("--> process_one_message");
 					if (m_endpoint.process_one_message() == -1)  begin
 						`uvm_fatal("zephyr-cosim-agent", "process-one-message failed during build-complete");
 						break;
 					end
+					$display("<-- process_one_message");
 				end
 			end
 			$display("<-- uvm: build_complete");
@@ -175,6 +185,25 @@ class zephyr_cosim_agent extends uvm_component;
 		// Start TbLink management thread
 		tblink_rpc_start();
 		
+		fork
+			irq_thread();
+		join_none
+	
+`ifdef UNDEFINED
+		fork
+			begin
+				$display("--> IRQ thread");
+				forever begin
+					#100us;
+					$display("==> Sending an IRQ");
+					write(10);
+					$display("<== Sending an IRQ");
+				end
+				$display("<-- IRQ thread");
+			end
+		join_none
+`endif
+		
 		$display("--> start");
 		while (rv != -1) begin
 			$display("--> Waiting %0s", m_endpoint.comm_state());
@@ -197,6 +226,19 @@ class zephyr_cosim_agent extends uvm_component;
 		end
 		$display("<-- start");
 		phase.drop_objection(this, "Main", 1);
+	endtask
+	
+	task irq_thread();
+		forever begin
+			int num;
+			m_irq_q.get(num);
+			
+			m_rw_lock.get(1);
+			$display("--> Send IRQ %0d", num);
+			m_if.irq(num);
+			$display("<-- Send IRQ %0d", num);
+			m_rw_lock.put(1);
+		end
 	endtask
 		
 	task sys_read8(
@@ -226,6 +268,8 @@ class zephyr_cosim_agent extends uvm_component;
 		uvm_sequence_item bus_req;
 		uvm_sequence_base seq = new("default_parent_seq");
 		$display("Agent sys_write32: 'h%08h 'h%08h", data, addr);
+		
+		m_rw_lock.get(1);
 
 		rw_access.kind    = UVM_READ;
 		rw_access.addr    = addr;
@@ -237,15 +281,13 @@ class zephyr_cosim_agent extends uvm_component;
 		$display("[%0t] --> Seqr Access", $time);
 		seq.set_sequencer(m_seqr);
 		seq.start_item(bus_req);
-		$display("==> Sending an IRQ");
-		irq(10);
-		$display("<== Sending an IRQ");
 		seq.finish_item(bus_req);
 		$display("[%0t] <-- Seqr Access", $time);			
 			
 		m_adapter.bus2reg(bus_req, rw_access);
 			
 		data = rw_access.data;
+		m_rw_lock.put(1);
 	endtask
 		
 	task sys_write32(
@@ -256,6 +298,8 @@ class zephyr_cosim_agent extends uvm_component;
 		uvm_sequence_base seq = new("default_parent_seq");
 		$display("Agent sys_write32: 'h%08h 'h%08h", data, addr);
 
+		m_rw_lock.get(1);
+		
 		rw_access.kind    = UVM_WRITE;
 		rw_access.addr    = addr;
 		rw_access.data    = data;
@@ -269,6 +313,8 @@ class zephyr_cosim_agent extends uvm_component;
 		seq.start_item(bus_req);
 		seq.finish_item(bus_req);
 		$display("[%0t] <-- Seqr Access", $time);
+		
+		m_rw_lock.put(1);
 	endtask
 	
 	class Listener extends IEndpointListener;

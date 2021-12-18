@@ -14,6 +14,10 @@ extern "C" {
 
 int zephyr_cosim_init(int argc, char **argv);
 
+int zephyr_cosim_process();
+
+int zephyr_cosim_release();
+
 void zephyr_cosim_exit(int exit_code);
 
 

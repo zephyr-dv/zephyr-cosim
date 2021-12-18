@@ -7,6 +7,7 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdbool.h>
 // #include "hw_models_top.h"
 #include "irq_ctrl.h"
@@ -226,6 +227,10 @@ void hw_irq_ctrl_set_irq(unsigned int irq)
 
 static void irq_raising_from_hw_now(void)
 {
+	fprintf(stdout, "irq_raising_from_hw_now: irqs_locked=%d lock_ignore=%d\n",
+			irqs_locked, lock_ignore);
+	fflush(stdout);
+
 	/*
 	 * We always awake the CPU even if the IRQ was masked,
 	 * but not if irqs are locked unless this is due to a

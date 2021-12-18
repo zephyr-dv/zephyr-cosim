@@ -69,6 +69,9 @@ void zephyr_cosim_exit(int exit_code) {
 int zephyr_cosim_init(int argc, char **argv) {
 	std::string tblink_rpc_lib;
 
+	fprintf(stdout, "--> zephyr_cosim_init\n");
+	fflush(stdout);
+
 	for (uint32_t i=0; i<argc; i++) {
 		fprintf(stdout, "Arg[%d] %s\n", i, argv[i]);
 	}
@@ -104,21 +107,30 @@ int zephyr_cosim_init(int argc, char **argv) {
 		return -1;
 	}
 
+	int rv;
+
 	prv_cosim_if = new ZephyrCosimIf(prv_endpoint);
 
-	while (prv_endpoint->is_init() == 0) {
+	while ((rv=prv_endpoint->is_init()) == 0) {
 		if (prv_endpoint->process_one_message() == -1) {
 			fprintf(stdout, "Error: failed waiting for init phase\n");
 			return -1;
 		}
 	}
 
+	if (rv == -1) {
+		fprintf(stdout, "ZephyrCosim Error: init failed\n");
+		return -1;
+	}
+
+	/* TODO:
 	std::vector<std::string> args = prv_endpoint->args();
 	for (std::vector<std::string>::const_iterator
 			it=args.begin();
 			it!=args.end(); it++) {
 		fprintf(stdout, "Arg: %s\n", it->c_str());
 	}
+	 */
 
 	// TODO: register API type and inst
 
@@ -129,12 +141,18 @@ int zephyr_cosim_init(int argc, char **argv) {
 		return -1;
 	}
 
-	while (prv_endpoint->is_build_complete() == 0) {
+	while ((rv=prv_endpoint->is_build_complete()) == 0) {
 		if (prv_endpoint->process_one_message() == -1) {
 			fprintf(stdout, "Error: failed waiting for build phase completion\n");
 			return -1;
 		}
 	}
+
+	if (rv == -1) {
+		fprintf(stdout, "ZephyrCosim Error: build failed\n");
+		return -1;
+	}
+
 	fprintf(stdout, "<-- build_complete\n");
 	fflush(stdout);
 
@@ -145,17 +163,33 @@ int zephyr_cosim_init(int argc, char **argv) {
 		return -1;
 	}
 
-	while (prv_endpoint->is_connect_complete() == 0) {
+	while ((rv=prv_endpoint->is_connect_complete()) == 0) {
 		if (prv_endpoint->process_one_message() == -1) {
 			fprintf(stdout, "Error: failed waiting for connect phase completion\n");
 			return -1;
 		}
 	}
 
+	if (rv == -1) {
+		fprintf(stdout, "ZephyrCosim Error: connect failed\n");
+		return -1;
+	}
+
 	fprintf(stdout, "<-- connect_complete\n");
 	fflush(stdout);
 
+	fprintf(stdout, "<-- zephyr_cosim_init\n");
+	fflush(stdout);
 
+	return 0;
+}
+
+int zephyr_cosim_process() {
+	return prv_endpoint->process_one_message();
+}
+
+int zephyr_cosim_release() {
+	prv_endpoint->update_comm_mode(IEndpoint::Automatic, IEndpoint::Released);
 	return 0;
 }
 

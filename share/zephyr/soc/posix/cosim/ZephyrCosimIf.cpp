@@ -60,7 +60,6 @@ void ZephyrCosimIf::write32(uint32_t data, uint64_t addr) {
 	params->push_back(m_ifinst->mkValIntU(data, 32));
 	params->push_back(m_ifinst->mkValIntU(addr, 64));
 
-
 	fprintf(stdout, "--> invoke::write32\n");
 	fflush(stdout);
 
@@ -223,6 +222,11 @@ tblink_rpc_core::IInterfaceType *ZephyrCosimIf::registerType(
 	return iftype;
 }
 
+extern "C" void posix_interrupt_raised();
+extern "C" void hw_irq_ctrl_raise_im(unsigned int irq);
+extern "C" void hw_irq_ctrl_raise_im_from_sw(unsigned int irq);
+extern "C" void hw_irq_ctrl_set_irq(unsigned int irq);
+
 void ZephyrCosimIf::request_f(
 		tblink_rpc_core::IInterfaceInst		*ifinst,
 		tblink_rpc_core::IMethodType		*method,
@@ -233,5 +237,17 @@ void ZephyrCosimIf::request_f(
 		fprintf(stdout, "TODO: IRQ\n");
 		fflush(stdout);
 		ifinst->invoke_rsp(call_id, 0);
+
+//		posix_interrupt_raised();
+//		hw_irq_ctrl_raise_im_from_sw(0);
+//		hw_irq_ctrl_set_irq(0);
+		hw_irq_ctrl_raise_im(0);
+
+
+		fprintf(stdout, "--> Update run mode\n");
+		fflush(stdout);
+		m_ep->update_comm_mode(IEndpoint::Automatic, IEndpoint::Released);
+		fprintf(stdout, "<-- Update run mode\n");
+		fflush(stdout);
 	}
 }

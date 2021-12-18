@@ -61,7 +61,7 @@ static pthread_mutex_t mtx_cpu   = PTHREAD_MUTEX_INITIALIZER;
 /* Variable which tells if the CPU is halted (1) or not (0) */
 static bool cpu_halted = true;
 
-static bool soc_terminate; /* Is the program being closed */
+static bool soc_terminate = false; /* Is the program being closed */
 
 
 int posix_is_cpu_running(void)
@@ -83,6 +83,9 @@ int posix_is_cpu_running(void)
  */
 void posix_change_cpu_state_and_wait(bool halted)
 {
+	fprintf(stdout, "--> posix_change_cpu_state_and_wait: halted=%d\n", halted);
+	fflush(stdout);
+
 	PC_SAFE_CALL(pthread_mutex_lock(&mtx_cpu));
 
 	PS_DEBUG("Going to halted = %d\n", halted);
@@ -90,7 +93,11 @@ void posix_change_cpu_state_and_wait(bool halted)
 	cpu_halted = halted;
 
 	/* We let the other side know the CPU has changed state */
+	fprintf(stdout, "--> call broadcast\n");
+	fflush(stdout);
 	PC_SAFE_CALL(pthread_cond_broadcast(&cond_cpu));
+	fprintf(stdout, "<-- call broadcast\n");
+	fflush(stdout);
 
 	/* We wait until the CPU state has been changed. Either:
 	 * we just awoke it, and therefore wait until the CPU has run until
@@ -100,14 +107,24 @@ void posix_change_cpu_state_and_wait(bool halted)
 	 * we are just hanging it, and therefore wait until the HW models awake
 	 * it again
 	 */
+	fprintf(stdout, "posix_change_cpu_state_and_wait: cpu_halted=%d halted=%d\n",
+			cpu_halted, halted);
 	while (cpu_halted == halted) {
 		/* Here we unlock the mutex while waiting */
+		fprintf(stdout, "--> cond_wait: cpu_halted=%d halted=%d\n",
+				cpu_halted, halted);
+		fflush(stdout);
 		pthread_cond_wait(&cond_cpu, &mtx_cpu);
+		fprintf(stdout, "<-- cond_wait: cpu_halted=%d halted=%d\n",
+				cpu_halted, halted);
+		fflush(stdout);
 	}
 
 	PS_DEBUG("Awaken after halted = %d\n", halted);
 
 	PC_SAFE_CALL(pthread_mutex_unlock(&mtx_cpu));
+	fprintf(stdout, "<-- posix_change_cpu_state_and_wait: halted=%d\n", halted);
+	fflush(stdout);
 }
 
 /**
@@ -116,6 +133,8 @@ void posix_change_cpu_state_and_wait(bool halted)
  */
 void posix_interrupt_raised(void)
 {
+	fprintf(stdout, "--> posix_interrupt_raised\n");
+	fflush(stdout);
 	/* We change the CPU to running state (we awake it), and block this
 	 * thread until the CPU is hateld again
 	 */
@@ -128,6 +147,9 @@ void posix_interrupt_raised(void)
 	if (soc_terminate) {
 		posix_exit(0);
 	}
+
+	fprintf(stdout, "<-- posix_interrupt_raised\n");
+	fflush(stdout);
 }
 
 
@@ -138,8 +160,10 @@ void posix_interrupt_raised(void)
  * until some interrupt awakes it.
  * Interrupts should be enabled before calling.
  */
-void posix_halt_cpu(void)
-{
+void posix_halt_cpu(void) {
+	fprintf(stdout, "--> posix_halt_cpu\n");
+	fflush(stdout);
+
 	/*
 	 * We set the CPU in the halted state (this blocks this pthread
 	 * until the CPU is awoken again by the HW models)
@@ -373,6 +397,36 @@ int main(int argc, char **argv) {
 	fflush(stdout);
 	run_native_tasks(_NATIVE_FIRST_SLEEP_LEVEL);
 	fprintf(stdout, "<-- NATIVE_FIRST_SLEEP_LEVEL\n");
+	fflush(stdout);
+
+	// Drop through to here once we WFI
+
+	zephyr_cosim_release();
+
+	fprintf(stdout, "--> Wait for soc_terminate\n");
+	fflush(stdout);
+	while (!soc_terminate) {
+		int rv;
+
+		// Instruct other side to release
+
+		// Wait for event
+
+		//
+		fprintf(stdout, "--> zephyr_cosim_process()\n");
+		fflush(stdout);
+		rv = zephyr_cosim_process();
+		fprintf(stdout, "<-- zephyr_cosim_process() %d\n", rv);
+		fflush(stdout);
+
+		if (rv == -1) {
+			posix_exit(0);
+		}
+
+		// TODO: process_one_message()
+//		pthread_cond_wait(&cond_cpu, &mtx_cpu);
+	}
+	fprintf(stdout, "<-- Wait for soc_terminate\n");
 	fflush(stdout);
 
 	zephyr_cosim_exit(0);

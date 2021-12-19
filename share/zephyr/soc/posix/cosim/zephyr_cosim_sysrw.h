@@ -1,10 +1,17 @@
-/*
+/****************************************************************************
+ * Copyright (c) 2021 Matthew Ballance
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
  * zephyr_cosim_sysrw.h
  *
  *  Created on: Sep 27, 2021
  *      Author: mballance
- */
-
+ *
+ * This file overrides the static-inline definitions of the
+ * sys_read/sys_write functions from the Zephyr core to allow Zephyr-Cosim
+ * to implement them.
+ ****************************************************************************/
 #ifndef INCLUDED_ZEPHYR_COSIM_SYSRW_H
 #define INCLUDED_ZEPHYR_COSIM_SYSRW_H
 #include <toolchain.h>

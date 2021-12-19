@@ -9,14 +9,12 @@
 
 #include <toolchain.h>
 
-#include "../../posix/cosim/posix_soc.h"
+#include "posix_soc.h"
 #include "board_soc.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-void posix_soc_clean_up(void);
 
 /**
  * NATIVE_TASK
@@ -54,13 +52,6 @@ void posix_soc_clean_up(void);
 #define _NATIVE_PRE_BOOT_3_LEVEL	2
 #define _NATIVE_FIRST_SLEEP_LEVEL	3
 #define _NATIVE_ON_EXIT_LEVEL		4
-
-/**
- * @brief Run the set of special native tasks corresponding to the given level
- *
- * @param level One of _NATIVE_*_LEVEL as defined in soc.h
- */
-void run_native_tasks(int level);
 
 #ifdef __cplusplus
 }

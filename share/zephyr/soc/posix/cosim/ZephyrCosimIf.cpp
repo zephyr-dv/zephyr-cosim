@@ -56,6 +56,8 @@ uint16_t ZephyrCosimIf::read16(uint64_t addr) {
 }
 
 void ZephyrCosimIf::write32(uint32_t data, uint64_t addr) {
+	// TODO: should acquire lock here
+
 	IParamValVec *params = m_ifinst->mkValVec();
 	params->push_back(m_ifinst->mkValIntU(data, 32));
 	params->push_back(m_ifinst->mkValIntU(addr, 64));
@@ -74,6 +76,7 @@ void ZephyrCosimIf::write32(uint32_t data, uint64_t addr) {
 	fprintf(stdout, "<-- invoke::write32\n");
 	fflush(stdout);
 
+	// TODO: should block on cond until
 	while (!complete) {
 		fprintf(stdout, "--> process_one_message\n");
 		fflush(stdout);

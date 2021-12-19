@@ -135,122 +135,16 @@ void posix_irq_handler_im_from_sw(void)
 	}
 }
 
-/**
- * @brief Disable all interrupts on the CPU
- *
- * This routine disables interrupts.  It can be called from either interrupt,
- * task or fiber level.  This routine returns an architecture-dependent
- * lock-out key representing the "interrupt disable state" prior to the call;
- * this key can be passed to irq_unlock() to re-enable interrupts.
- *
- * The lock-out key should only be used as the argument to the irq_unlock()
- * API. It should never be used to manually re-enable interrupts or to inspect
- * or manipulate the contents of the source register.
- *
- * This function can be called recursively: it will return a key to return the
- * state of interrupt locking to the previous level.
- *
- * WARNINGS
- * Invoking a kernel routine with interrupts locked may result in
- * interrupts being re-enabled for an unspecified period of time.  If the
- * called routine blocks, interrupts will be re-enabled while another
- * thread executes, or while the system is idle.
- *
- * The "interrupt disable state" is an attribute of a thread.  Thus, if a
- * fiber or task disables interrupts and subsequently invokes a kernel
- * routine that causes the calling thread to block, the interrupt
- * disable state will be restored when the thread is later rescheduled
- * for execution.
- *
- * @return An architecture-dependent lock-out key representing the
- * "interrupt disable state" prior to the call.
- *
- */
-unsigned int posix_irq_lock(void)
-{
-	return hw_irq_ctrl_change_lock(true);
-}
 
-/**
- *
- * @brief Enable all interrupts on the CPU
- *
- * This routine re-enables interrupts on the CPU.  The @a key parameter is a
- * board-dependent lock-out key that is returned by a previous invocation of
- * board_irq_lock().
- *
- * This routine can be called from either interrupt, task or fiber level.
- *
- * @return N/A
- *
- */
-void posix_irq_unlock(unsigned int key)
-{
-	hw_irq_ctrl_change_lock(key);
-}
 
-void posix_irq_full_unlock(void)
-{
-	hw_irq_ctrl_change_lock(false);
-}
 
-void posix_irq_enable(unsigned int irq)
-{
-	hw_irq_ctrl_enable_irq(irq);
-}
 
-void posix_irq_disable(unsigned int irq)
-{
-	hw_irq_ctrl_disable_irq(irq);
-}
 
-int posix_irq_is_enabled(unsigned int irq)
-{
-	return hw_irq_ctrl_is_irq_enabled(irq);
-}
 
-int posix_get_current_irq(void)
-{
-	return currently_running_irq;
-}
 
-/**
- * Configure a static interrupt.
- *
- * posix_isr_declare will populate the interrupt table table with the
- * interrupt's parameters, the vector table and the software ISR table.
- *
- * We additionally set the priority in the interrupt controller at
- * runtime.
- *
- * @param irq_p IRQ line number
- * @param flags [plug it directly (1), or as a SW managed interrupt (0)]
- * @param isr_p Interrupt service routine
- * @param isr_param_p ISR parameter
- * @param flags_p IRQ options
- */
-void posix_isr_declare(unsigned int irq_p, int flags, void isr_p(const void *),
-		       const void *isr_param_p)
-{
-	irq_vector_table[irq_p].irq   = irq_p;
-	irq_vector_table[irq_p].func  = isr_p;
-	irq_vector_table[irq_p].param = isr_param_p;
-	irq_vector_table[irq_p].flags = flags;
-}
 
-/*
- * @internal
- *
- * @brief Set an interrupt's priority
- *
- * Lower values take priority over higher values.
- *
- * @return N/A
- */
-void posix_irq_priority_set(unsigned int irq, unsigned int prio, uint32_t flags)
-{
-	hw_irq_ctrl_prio_set(irq, prio);
-}
+
+
 
 /**
  * Similar to ARM's NVIC_SetPendingIRQ
@@ -274,34 +168,3 @@ void posix_sw_clear_pending_IRQ(unsigned int IRQn)
 	hw_irq_ctrl_clear_irq(IRQn);
 }
 
-#ifdef CONFIG_IRQ_OFFLOAD
-/**
- * Storage for functions offloaded to IRQ
- */
-static void (*off_routine)(const void *);
-static const void *off_parameter;
-
-/**
- * IRQ handler for the SW interrupt assigned to irq_offload()
- */
-static void offload_sw_irq_handler(const void *a)
-{
-	ARG_UNUSED(a);
-	off_routine(off_parameter);
-}
-
-/**
- * @brief Run a function in interrupt context
- *
- * Raise the SW IRQ assigned to handled this
- */
-void posix_irq_offload(void (*routine)(const void *), const void *parameter)
-{
-	off_routine = routine;
-	off_parameter = parameter;
-	posix_isr_declare(OFFLOAD_SW_IRQ, 0, offload_sw_irq_handler, NULL);
-	posix_irq_enable(OFFLOAD_SW_IRQ);
-	posix_sw_set_pending_IRQ(OFFLOAD_SW_IRQ);
-	posix_irq_disable(OFFLOAD_SW_IRQ);
-}
-#endif /* CONFIG_IRQ_OFFLOAD */

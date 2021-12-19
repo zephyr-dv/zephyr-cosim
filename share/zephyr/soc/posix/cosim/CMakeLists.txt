@@ -26,14 +26,11 @@ set_property(TARGET compiler-cpp PROPERTY no_rtti)
 #file(GLOB_RECURSE TBLINK_RPC_SRCS ${TBLINK_RPC_C_DIR}/*.cpp)
 
 zephyr_library_sources(
-	irq_ctrl.c
-	irq_handler.c
-	soc.c
-	tracing.c
-	EndpointServicesZephyrCosim.cpp
-	ZephyrCosimIf.cpp
-	zephyr_cosim.cpp
-#	${TBLINK_RPC_SRCS}
+	board_irq.cpp
+	posix_soc_if.cpp
+	system_timer.cpp
+	zephyr_cosim_sysrw.cpp
+	ZephyrCosim.cpp
 	)
 
 # Forcing this include prevents static-inline implementations of

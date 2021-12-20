@@ -13,6 +13,7 @@
 #include "kswap.h"
 #include "posix_arch_internal.h"
 #include <arch/posix/posix_soc_if.h>
+#include "kernel_internal.h"
 #include "posix_core.h"
 #include "soc.h"
 #include "tblink_rpc/ITbLink.h"
@@ -113,11 +114,13 @@ int ZephyrCosim::run(int argc, char **argv) {
 
 	pthread_mutex_lock(&m_mtx_cpu);
 	while (!m_soc_terminate) {
-		DEBUG_ENTER("run::wait");
+		DEBUG_ENTER("run::wait 0x%08x", z_main_thread.base.user_options);
 		pthread_cond_wait(&m_cond_cpu, &m_mtx_cpu);
-		DEBUG_LEAVE("run::wait %d", m_soc_terminate);
+		DEBUG_LEAVE("run::wait %d 0x%08x", m_soc_terminate, z_main_thread.base.user_options);
 	}
 	pthread_mutex_unlock(&m_mtx_cpu);
+
+	DEBUG("Note: m_soc_terminate=%d", m_soc_terminate);
 
 #ifdef UNDEFINED
 	zephyr_cosim_release();
@@ -236,44 +239,62 @@ int32_t ZephyrCosim::running_irq() {
 }
 
 void ZephyrCosim::halt_cpu() {
-	DEBUG_ENTER("halt_cpu");
-	fprintf(stdout, "--> posix_halt_cpu\n");
-	fflush(stdout);
+	DEBUG_ENTER("halt_cpu main_thread=0x%08x", z_main_thread.base.user_options);
 
-	/*
-	 * We set the CPU in the halted state (this blocks this pthread
-	 * until the CPU is awakened via an interrupt
-	 */
-	pthread_mutex_lock(&m_mtx_cpu);
+	if (!(z_main_thread.base.user_options & K_ESSENTIAL)) {
+		// The main thread has exited. Notify the connected
+		// simulator that we are complete
+		m_soc_terminate = true;
 
-	DEBUG_ENTER("halt_cpu::release");
-	m_ep->update_comm_mode(IEndpoint::Automatic, IEndpoint::Released);
-	DEBUG_LEAVE("halt_cpu::release");
+		pthread_mutex_lock(&m_mtx_cpu);
+		m_cpu_halted = true;
+		pthread_cond_broadcast(&m_cond_cpu);
 
-	m_cpu_halted = true;
+		while (m_cpu_halted) {
+			DEBUG_ENTER("halt_cpu::cond_wait");
+			pthread_cond_wait(&m_cond_cpu, &m_mtx_cpu);
+			DEBUG_LEAVE("halt_cpu::cond_wait %d", m_cpu_halted);
+		}
+		pthread_mutex_unlock(&m_mtx_cpu);
+	} else {
+		// Main thread is still running. Release the simulation
+		// to run until an event is received.
 
-	while (m_cpu_halted) {
-		DEBUG_ENTER("halt_cpu::cond_wait");
-		pthread_cond_wait(&m_cond_cpu, &m_mtx_cpu);
-		DEBUG_LEAVE("halt_cpu::cond_wait %d", m_cpu_halted);
+		/*
+		 * We set the CPU in the halted state (this blocks this pthread
+		 * until the CPU is awakened via an interrupt
+		 */
+		pthread_mutex_lock(&m_mtx_cpu);
+
+		DEBUG_ENTER("halt_cpu::release");
+		m_ep->update_comm_mode(IEndpoint::Automatic, IEndpoint::Released);
+		DEBUG_LEAVE("halt_cpu::release");
+
+		m_cpu_halted = true;
+
+		while (m_cpu_halted) {
+			DEBUG_ENTER("halt_cpu::cond_wait");
+			pthread_cond_wait(&m_cond_cpu, &m_mtx_cpu);
+			DEBUG_LEAVE("halt_cpu::cond_wait %d", m_cpu_halted);
+		}
+
+		pthread_mutex_unlock(&m_mtx_cpu);
+
+		// TODO:
+		//	ZephyrCosim::inst()->change_cpu_state_and_wait(true);
+
+		/* We are awoken, normally that means some interrupt has just come
+		 * => let the "irq handler" check if/what interrupt was raised
+		 * and call the appropriate irq handler.
+		 *
+		 * Note that, the interrupt handling may trigger a arch_swap() to
+		 * another Zephyr thread. When posix_irq_handler() returns, the Zephyr
+		 * kernel has swapped back to this thread again
+		 */
+		DEBUG_ENTER("halt_cpu::irq_handler");
+		irq_handler();
+		DEBUG_LEAVE("halt_cpu::irq_handler");
 	}
-
-	pthread_mutex_unlock(&m_mtx_cpu);
-
-	// TODO:
-//	ZephyrCosim::inst()->change_cpu_state_and_wait(true);
-
-	/* We are awoken, normally that means some interrupt has just come
-	 * => let the "irq handler" check if/what interrupt was raised
-	 * and call the appropriate irq handler.
-	 *
-	 * Note that, the interrupt handling may trigger a arch_swap() to
-	 * another Zephyr thread. When posix_irq_handler() returns, the Zephyr
-	 * kernel has swapped back to this thread again
-	 */
-	DEBUG_ENTER("halt_cpu::irq_handler");
-	irq_handler();
-	DEBUG_LEAVE("halt_cpu::irq_handler");
 
 	/*
 	 * And we go back to whatever Zephyr thread calleed us.
@@ -611,7 +632,9 @@ int ZephyrCosim::init_cosim(int argc, char **argv) {
 }
 
 void ZephyrCosim::exit(int32_t code) {
+	DEBUG_ENTER("exit %d", code);
 
+	DEBUG_LEAVE("exit %d", code);
 }
 
 void ZephyrCosim::boot_cpu() {

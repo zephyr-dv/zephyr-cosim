@@ -8,6 +8,7 @@
 #pragma once
 #include <stdint.h>
 #include <pthread.h>
+#include <zephyr/types.h>
 #include "sw_isr_table.h"
 #include "tblink_rpc/IEndpoint.h"
 
@@ -53,6 +54,21 @@ public:
 
 	void atomic_halt_cpu(uint32_t mask);
 
+	/**
+	 * Memory interface
+	 */
+	uint8_t read8(mem_addr_t addr);
+
+	void write8(uint8_t data, mem_addr_t addr);
+
+	uint16_t read16(mem_addr_t addr);
+
+	void write16(uint16_t data, mem_addr_t addr);
+
+	uint32_t read32(mem_addr_t addr);
+
+	void write32(uint32_t data, mem_addr_t addr);
+
 private:
 
 	int init_cosim(int argc, char **argv);
@@ -65,9 +81,17 @@ private:
 
 	void run_native_tasks(int level);
 
+	tblink_rpc_core::IInterfaceType *defineIftype();
+
 	static void *message_processing_thread_w(void *);
 
 	void message_processing_thread();
+
+	void req_invoke(
+			tblink_rpc_core::IInterfaceInst		*ifinst,
+			tblink_rpc_core::IMethodType		*method,
+			intptr_t							call_id,
+			tblink_rpc_core::IParamValVec		*params);
 
 private:
 	static const int N_IRQS = 32;
@@ -75,6 +99,17 @@ private:
 	static ZephyrCosim			*m_inst;
 
 	tblink_rpc_core::IEndpoint		*m_ep;
+	tblink_rpc_core::IInterfaceInst	*m_ifinst;
+	tblink_rpc_core::IMethodType	*m_read8;
+	tblink_rpc_core::IMethodType	*m_write8;
+	tblink_rpc_core::IMethodType	*m_read16;
+	tblink_rpc_core::IMethodType	*m_write16;
+	tblink_rpc_core::IMethodType	*m_read32;
+	tblink_rpc_core::IMethodType	*m_write32;
+	tblink_rpc_core::IMethodType	*m_sys_irq;
+
+	pthread_mutex_t					m_mtx_invoke;
+	pthread_cond_t					m_cond_invoke;
 
 	pthread_t						m_zephyr_thread;
 	pthread_mutex_t					m_mtx_cpu;

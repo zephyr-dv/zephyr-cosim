@@ -28,9 +28,12 @@ set_property(TARGET compiler-cpp PROPERTY no_rtti)
 zephyr_library_sources(
 	board_irq.cpp
 	posix_soc_if.cpp
+	posix_trace.cpp
 	system_timer.cpp
 	zephyr_cosim_sysrw.cpp
+	EndpointServicesZephyrCosim.cpp
 	ZephyrCosim.cpp
+	zephyr_cosim_main.cpp
 	)
 
 # Forcing this include prevents static-inline implementations of

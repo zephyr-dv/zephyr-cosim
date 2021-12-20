@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "EndpointServicesZephyrCosim.h"
 #include "ZephyrCosim.h"
 #include "kernel_internal.h"
 #include "posix_arch_internal.h"
@@ -14,8 +15,24 @@
 #include "posix_core.h"
 #include "soc.h"
 #include "tblink_rpc/ITbLink.h"
+#include "tblink_rpc/IParamValVec.h"
 #include "tblink_rpc/loader.h"
 #include "zephyr_cosim_sysrw.h"
+
+#define EN_DEBUG_ZEPHYR_COSIM
+
+#ifdef EN_DEBUG_ZEPHYR_COSIM
+#define DEBUG_ENTER(fmt, ...) fprintf(stdout, "--> ZephyrCosim::" fmt "\n", ##__VA_ARGS__)
+#define DEBUG_LEAVE(fmt, ...) fprintf(stdout, "<--ZephyrCosim::" fmt "\n", ##__VA_ARGS__)
+#define DEBUG(fmt, ...) fprintf(stdout, "ZephyrCosim: " fmt "\n", ##__VA_ARGS__)
+#else
+#define DEBUG_ENTER(fmt, ...)
+#define DEBUG_LEAVE(fmt, ...)
+#define DEBUG(fmt, ...)
+#endif
+
+using namespace tblink_rpc_core;
+
 
 ZephyrCosim::ZephyrCosim() {
 	m_ep = 0;
@@ -24,6 +41,15 @@ ZephyrCosim::ZephyrCosim() {
 
 	m_cpu_halted = false;
 	m_soc_terminate = false;
+
+	m_ifinst = 0;
+	m_read8 = 0;
+	m_write8 = 0;
+	m_read16 = 0;
+	m_write16 = 0;
+	m_read32 = 0;
+	m_write32 = 0;
+	m_sys_irq = 0;
 
 	memset(&m_irq_vector_table, 0, sizeof(m_irq_vector_table));
 
@@ -40,6 +66,11 @@ ZephyrCosim::~ZephyrCosim() {
 }
 
 int ZephyrCosim::run(int argc, char **argv) {
+	DEBUG_ENTER("run");
+
+	pthread_mutex_init(&m_mtx_invoke, 0);
+	pthread_cond_init(&m_cond_invoke, 0);
+
 	if (init_cosim(argc, argv) == -1) {
 		fprintf(stdout, "Error: failed to initialize cosim link\n");
 		return 1;
@@ -118,6 +149,7 @@ int ZephyrCosim::run(int argc, char **argv) {
 //	hwm_main_loop();
 #endif /* UNDEFINED */
 
+	DEBUG_LEAVE("run");
 	/* This line should be unreachable */
 	return 1; /* LCOV_EXCL_LINE */
 }
@@ -213,7 +245,93 @@ void ZephyrCosim::atomic_halt_cpu(uint32_t mask) {
 	irq_unlock(mask);
 }
 
+uint8_t ZephyrCosim::read8(mem_addr_t addr) {
+	DEBUG_ENTER("read8");
+	DEBUG_LEAVE("read8");
+	return 0;
+}
+
+void ZephyrCosim::write8(uint8_t data, mem_addr_t addr) {
+	DEBUG_ENTER("write8");
+	DEBUG_LEAVE("write8");
+}
+
+uint16_t ZephyrCosim::read16(mem_addr_t addr) {
+	DEBUG_ENTER("read16");
+	DEBUG_LEAVE("read16");
+	return 0;
+}
+
+void ZephyrCosim::write16(uint16_t data, mem_addr_t addr) {
+	DEBUG_ENTER("write16");
+	DEBUG_LEAVE("write16");
+}
+
+uint32_t ZephyrCosim::read32(mem_addr_t addr) {
+	DEBUG_ENTER("read32");
+
+	IParamValVec *params = m_ifinst->mkValVec();
+	params->push_back(m_ifinst->mkValIntU(addr, 64));
+
+	bool complete = false;
+	uint32_t ret = 0;
+
+	m_ifinst->invoke_nb(
+			m_read32,
+			params,
+			[&](IParamVal *retval) {
+				DEBUG_ENTER("read32::rsp");
+				pthread_mutex_lock(&m_mtx_invoke);
+				complete = true;
+				ret = dynamic_cast<IParamValInt *>(retval)->val_u();
+				pthread_cond_broadcast(&m_cond_invoke);
+				pthread_mutex_unlock(&m_mtx_invoke);
+				DEBUG_LEAVE("read32::rsp");
+			});
+
+	pthread_mutex_lock(&m_mtx_invoke);
+	while (!complete) {
+		pthread_cond_wait(&m_cond_invoke, &m_mtx_invoke);
+	}
+	pthread_mutex_unlock(&m_mtx_invoke);
+
+	DEBUG_LEAVE("read32");
+	return ret;
+}
+
+void ZephyrCosim::write32(uint32_t data, mem_addr_t addr) {
+	DEBUG_ENTER("write32");
+	// TODO: should acquire lock here
+
+	IParamValVec *params = m_ifinst->mkValVec();
+	params->push_back(m_ifinst->mkValIntU(data, 32));
+	params->push_back(m_ifinst->mkValIntU(addr, 64));
+
+	bool complete = false;
+
+	m_ifinst->invoke_nb(
+			m_write32,
+			params,
+			[&](IParamVal *retval) {
+				DEBUG_ENTER("write32::rsp");
+				pthread_mutex_lock(&m_mtx_invoke);
+				complete = true;
+				pthread_cond_broadcast(&m_cond_invoke);
+				pthread_mutex_unlock(&m_mtx_invoke);
+				DEBUG_LEAVE("write32::rsp");
+			});
+
+	pthread_mutex_lock(&m_mtx_invoke);
+	while (!complete) {
+		pthread_cond_wait(&m_cond_invoke, &m_mtx_invoke);
+	}
+	pthread_mutex_unlock(&m_mtx_invoke);
+
+	DEBUG_LEAVE("write32");
+}
+
 int ZephyrCosim::init_cosim(int argc, char **argv) {
+	DEBUG_ENTER("init_cosim");
 	std::string tblink_rpc_lib;
 
 	fprintf(stdout, "--> zephyr_cosim_init\n");
@@ -247,14 +365,26 @@ int ZephyrCosim::init_cosim(int argc, char **argv) {
 		fprintf(stdout, "Succeeded\n");
 	}
 
-//	EndpointServicesZephyrCosim *services = new EndpointServicesZephyrCosim();
+	EndpointServicesZephyrCosim *services = new EndpointServicesZephyrCosim();
 	m_ep = result.first;
-	/*
+
+	IInterfaceType *iftype = defineIftype();
+
+	m_ifinst = m_ep->defineInterfaceInst(
+			iftype,
+			"cosim",
+			true,
+			std::bind(&ZephyrCosim::req_invoke,
+					this,
+					std::placeholders::_1,
+					std::placeholders::_2,
+					std::placeholders::_3,
+					std::placeholders::_4));
+
 	if (m_ep->init(services, 0) == -1) {
 		fprintf(stdout, "Initialization failed: %s\n", result.first->last_error().c_str());
 		return -1;
 	}
-	 */
 
 	int rv;
 
@@ -330,6 +460,7 @@ int ZephyrCosim::init_cosim(int argc, char **argv) {
 	fprintf(stdout, "<-- zephyr_cosim_init\n");
 	fflush(stdout);
 
+	DEBUG_LEAVE("init_cosim");
 	return 0;
 }
 
@@ -438,10 +569,22 @@ void *ZephyrCosim::message_processing_thread_w(void *zc_p) {
 }
 
 void ZephyrCosim::message_processing_thread() {
+	DEBUG_ENTER("message_processing_thread");
 	// TODO: condition on 'running' ?
 	while (m_ep->process_one_message() != -1) {
 		;
 	}
+	DEBUG_LEAVE("message_processing_thread");
+}
+
+void ZephyrCosim::req_invoke(
+	tblink_rpc_core::IInterfaceInst		*ifinst,
+	tblink_rpc_core::IMethodType		*method,
+	intptr_t							call_id,
+	tblink_rpc_core::IParamValVec		*params) {
+	DEBUG_ENTER("req_invoke");
+
+	DEBUG_LEAVE("req_invoke");
 }
 
 /**
@@ -475,6 +618,105 @@ void ZephyrCosim::run_native_tasks(int level)
 			(*fptr)();
 		}
 	}
+}
+
+tblink_rpc_core::IInterfaceType *ZephyrCosim::defineIftype() {
+	IInterfaceType *iftype = m_ep->findInterfaceType("zephyr_cosim_if");
+
+	if (!iftype) {
+		IInterfaceTypeBuilder *iftype_b = m_ep->newInterfaceTypeBuilder(
+				"zephyr_cosim_if");
+		IMethodTypeBuilder *method_b;
+
+		// read8
+		method_b = iftype_b->newMethodTypeBuilder(
+				"sys_read8",
+				1,
+				iftype_b->mkTypeInt(false, 8),
+				true,
+				true);
+		method_b->add_param("addr",
+				iftype_b->mkTypeInt(false, 64));
+		m_read8 = iftype_b->add_method(method_b);
+
+		// write8
+		method_b = iftype_b->newMethodTypeBuilder(
+				"sys_write8",
+				2,
+				0,
+				true,
+				true);
+		method_b->add_param("data",
+				iftype_b->mkTypeInt(false, 8));
+		method_b->add_param("addr",
+				iftype_b->mkTypeInt(false, 64));
+		m_write8 = iftype_b->add_method(method_b);
+
+
+		// read16
+		method_b = iftype_b->newMethodTypeBuilder(
+				"sys_read16",
+				3,
+				iftype_b->mkTypeInt(false, 16),
+				true,
+				true);
+		method_b->add_param("addr",
+				iftype_b->mkTypeInt(false, 64));
+		m_read16 = iftype_b->add_method(method_b);
+
+		// write16
+		method_b = iftype_b->newMethodTypeBuilder(
+				"sys_write16",
+				4,
+				0,
+				true,
+				true);
+		method_b->add_param("data",
+				iftype_b->mkTypeInt(false, 16));
+		method_b->add_param("addr",
+				iftype_b->mkTypeInt(false, 64));
+		m_write16 = iftype_b->add_method(method_b);
+
+		// read32
+		method_b = iftype_b->newMethodTypeBuilder(
+				"sys_read32",
+				5,
+				iftype_b->mkTypeInt(false, 32),
+				true,
+				true);
+		method_b->add_param("addr",
+				iftype_b->mkTypeInt(false, 64));
+		m_read32 = iftype_b->add_method(method_b);
+
+		// write32
+		method_b = iftype_b->newMethodTypeBuilder(
+				"sys_write32",
+				6,
+				0,
+				true,
+				true);
+		method_b->add_param("data",
+				iftype_b->mkTypeInt(false, 32));
+		method_b->add_param("addr",
+				iftype_b->mkTypeInt(false, 64));
+		m_write32 = iftype_b->add_method(method_b);
+
+		// irq
+		method_b = iftype_b->newMethodTypeBuilder(
+				"sys_irq",
+				7,
+				0,
+				false,
+				false);
+		method_b->add_param("num",
+				iftype_b->mkTypeInt(false, 8));
+		m_sys_irq = iftype_b->add_method(method_b);
+
+		iftype = m_ep->defineInterfaceType(iftype_b);
+	}
+
+	return iftype;
+	;
 }
 
 ZephyrCosim *ZephyrCosim::m_inst = 0;

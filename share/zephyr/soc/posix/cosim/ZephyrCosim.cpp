@@ -10,6 +10,7 @@
 #include "EndpointServicesZephyrCosim.h"
 #include "ZephyrCosim.h"
 #include "kernel_internal.h"
+#include "kswap.h"
 #include "posix_arch_internal.h"
 #include <arch/posix/posix_soc_if.h>
 #include "posix_core.h"
@@ -22,9 +23,9 @@
 #define EN_DEBUG_ZEPHYR_COSIM
 
 #ifdef EN_DEBUG_ZEPHYR_COSIM
-#define DEBUG_ENTER(fmt, ...) fprintf(stdout, "--> ZephyrCosim::" fmt "\n", ##__VA_ARGS__)
-#define DEBUG_LEAVE(fmt, ...) fprintf(stdout, "<--ZephyrCosim::" fmt "\n", ##__VA_ARGS__)
-#define DEBUG(fmt, ...) fprintf(stdout, "ZephyrCosim: " fmt "\n", ##__VA_ARGS__)
+#define DEBUG_ENTER(fmt, ...) fprintf(stdout, "--> ZephyrCosim::" fmt "\n", ##__VA_ARGS__); fflush(stdout)
+#define DEBUG_LEAVE(fmt, ...) fprintf(stdout, "<--ZephyrCosim::" fmt "\n", ##__VA_ARGS__); fflush(stdout)
+#define DEBUG(fmt, ...) fprintf(stdout, "ZephyrCosim: " fmt "\n", ##__VA_ARGS__); fflush(stdout)
 #else
 #define DEBUG_ENTER(fmt, ...)
 #define DEBUG_LEAVE(fmt, ...)
@@ -56,8 +57,10 @@ ZephyrCosim::ZephyrCosim() {
 	memset(&m_irq_prio, 255, sizeof(m_irq_prio));
 	m_irq_status = 0;
 	m_irq_mask = 0;
+	m_running_irq = -1;
 	m_irq_premask = 0;
 	m_irqs_locked = false;
+	m_may_swap = false;
 	m_irq_lock_ignore = false;
 }
 
@@ -106,6 +109,15 @@ int ZephyrCosim::run(int argc, char **argv) {
 	fflush(stdout);
 
 	// Drop through to here once we WFI
+	DEBUG("Note: Execution has suspended for the first time");
+
+	pthread_mutex_lock(&m_mtx_cpu);
+	while (!m_soc_terminate) {
+		DEBUG_ENTER("run::wait");
+		pthread_cond_wait(&m_cond_cpu, &m_mtx_cpu);
+		DEBUG_LEAVE("run::wait %d", m_soc_terminate);
+	}
+	pthread_mutex_unlock(&m_mtx_cpu);
 
 #ifdef UNDEFINED
 	zephyr_cosim_release();
@@ -180,12 +192,21 @@ void ZephyrCosim::irq_prio(
 }
 
 void ZephyrCosim::enable_irq(uint32_t irq) {
+	DEBUG_ENTER("enable_irq %d", irq);
 	m_irq_mask |= 1ULL << irq;
 
 	if (m_irq_premask & (1ULL << irq)) {
 		// TODO:
 		// hw_irq_ctrl_raise_imm_from_sw(irq);
 	}
+	DEBUG_LEAVE("enable_irq %d", irq);
+}
+
+bool ZephyrCosim::irq_enabled(uint32_t irq) {
+	DEBUG_ENTER("irq_enabled %d", irq);
+	bool ret = (m_irq_mask & (1ULL << irq));
+	DEBUG_LEAVE("irq_enabled %d %d", irq, ret);
+	return ret;
 }
 
 void ZephyrCosim::disable_irq(uint32_t irq) {
@@ -209,18 +230,36 @@ void ZephyrCosim::unlock_irq(uint32_t key) {
 }
 
 int32_t ZephyrCosim::running_irq() {
-	// TODO:
-	return -1;
+	DEBUG_ENTER("running_irq");
+	DEBUG_LEAVE("running_irq %d", m_running_irq);
+	return m_running_irq;
 }
 
 void ZephyrCosim::halt_cpu() {
+	DEBUG_ENTER("halt_cpu");
 	fprintf(stdout, "--> posix_halt_cpu\n");
 	fflush(stdout);
 
 	/*
 	 * We set the CPU in the halted state (this blocks this pthread
-	 * until the CPU is awoken again by the HW models)
+	 * until the CPU is awakened via an interrupt
 	 */
+	pthread_mutex_lock(&m_mtx_cpu);
+
+	DEBUG_ENTER("halt_cpu::release");
+	m_ep->update_comm_mode(IEndpoint::Automatic, IEndpoint::Released);
+	DEBUG_LEAVE("halt_cpu::release");
+
+	m_cpu_halted = true;
+
+	while (m_cpu_halted) {
+		DEBUG_ENTER("halt_cpu::cond_wait");
+		pthread_cond_wait(&m_cond_cpu, &m_mtx_cpu);
+		DEBUG_LEAVE("halt_cpu::cond_wait %d", m_cpu_halted);
+	}
+
+	pthread_mutex_unlock(&m_mtx_cpu);
+
 	// TODO:
 //	ZephyrCosim::inst()->change_cpu_state_and_wait(true);
 
@@ -232,11 +271,14 @@ void ZephyrCosim::halt_cpu() {
 	 * another Zephyr thread. When posix_irq_handler() returns, the Zephyr
 	 * kernel has swapped back to this thread again
 	 */
+	DEBUG_ENTER("halt_cpu::irq_handler");
 	irq_handler();
+	DEBUG_LEAVE("halt_cpu::irq_handler");
 
 	/*
 	 * And we go back to whatever Zephyr thread calleed us.
 	 */
+	DEBUG_LEAVE("halt_cpu");
 }
 
 void ZephyrCosim::atomic_halt_cpu(uint32_t mask) {
@@ -247,23 +289,127 @@ void ZephyrCosim::atomic_halt_cpu(uint32_t mask) {
 
 uint8_t ZephyrCosim::read8(mem_addr_t addr) {
 	DEBUG_ENTER("read8");
+
+	IParamValVec *params = m_ifinst->mkValVec();
+	params->push_back(m_ifinst->mkValIntU(addr, 64));
+
+	bool complete = false;
+	uint8_t ret = 0;
+
+	m_ifinst->invoke_nb(
+			m_read8,
+			params,
+			[&](IParamVal *retval) {
+				DEBUG_ENTER("read8::rsp");
+				pthread_mutex_lock(&m_mtx_invoke);
+				complete = true;
+				ret = dynamic_cast<IParamValInt *>(retval)->val_u();
+				pthread_cond_broadcast(&m_cond_invoke);
+				pthread_mutex_unlock(&m_mtx_invoke);
+				DEBUG_LEAVE("read8::rsp");
+			});
+
+	pthread_mutex_lock(&m_mtx_invoke);
+	while (!complete) {
+		pthread_cond_wait(&m_cond_invoke, &m_mtx_invoke);
+	}
+	pthread_mutex_unlock(&m_mtx_invoke);
+
 	DEBUG_LEAVE("read8");
-	return 0;
+	return ret;
 }
 
 void ZephyrCosim::write8(uint8_t data, mem_addr_t addr) {
 	DEBUG_ENTER("write8");
+	// TODO: should acquire lock here
+
+	IParamValVec *params = m_ifinst->mkValVec();
+	params->push_back(m_ifinst->mkValIntU(data, 32));
+	params->push_back(m_ifinst->mkValIntU(addr, 64));
+
+	bool complete = false;
+
+	m_ifinst->invoke_nb(
+			m_write8,
+			params,
+			[&](IParamVal *retval) {
+				DEBUG_ENTER("write8::rsp");
+				pthread_mutex_lock(&m_mtx_invoke);
+				complete = true;
+				pthread_cond_broadcast(&m_cond_invoke);
+				pthread_mutex_unlock(&m_mtx_invoke);
+				DEBUG_LEAVE("write8::rsp");
+			});
+
+	pthread_mutex_lock(&m_mtx_invoke);
+	while (!complete) {
+		pthread_cond_wait(&m_cond_invoke, &m_mtx_invoke);
+	}
+	pthread_mutex_unlock(&m_mtx_invoke);
+
 	DEBUG_LEAVE("write8");
 }
 
 uint16_t ZephyrCosim::read16(mem_addr_t addr) {
 	DEBUG_ENTER("read16");
+
+	IParamValVec *params = m_ifinst->mkValVec();
+	params->push_back(m_ifinst->mkValIntU(addr, 64));
+
+	bool complete = false;
+	uint16_t ret = 0;
+
+	m_ifinst->invoke_nb(
+			m_read16,
+			params,
+			[&](IParamVal *retval) {
+				DEBUG_ENTER("read16::rsp");
+				pthread_mutex_lock(&m_mtx_invoke);
+				complete = true;
+				ret = dynamic_cast<IParamValInt *>(retval)->val_u();
+				pthread_cond_broadcast(&m_cond_invoke);
+				pthread_mutex_unlock(&m_mtx_invoke);
+				DEBUG_LEAVE("read16::rsp");
+			});
+
+	pthread_mutex_lock(&m_mtx_invoke);
+	while (!complete) {
+		pthread_cond_wait(&m_cond_invoke, &m_mtx_invoke);
+	}
+	pthread_mutex_unlock(&m_mtx_invoke);
+
 	DEBUG_LEAVE("read16");
-	return 0;
+	return ret;
 }
 
 void ZephyrCosim::write16(uint16_t data, mem_addr_t addr) {
 	DEBUG_ENTER("write16");
+	// TODO: should acquire lock here
+
+	IParamValVec *params = m_ifinst->mkValVec();
+	params->push_back(m_ifinst->mkValIntU(data, 32));
+	params->push_back(m_ifinst->mkValIntU(addr, 64));
+
+	bool complete = false;
+
+	m_ifinst->invoke_nb(
+			m_write16,
+			params,
+			[&](IParamVal *retval) {
+				DEBUG_ENTER("write16::rsp");
+				pthread_mutex_lock(&m_mtx_invoke);
+				complete = true;
+				pthread_cond_broadcast(&m_cond_invoke);
+				pthread_mutex_unlock(&m_mtx_invoke);
+				DEBUG_LEAVE("write16::rsp");
+			});
+
+	pthread_mutex_lock(&m_mtx_invoke);
+	while (!complete) {
+		pthread_cond_wait(&m_cond_invoke, &m_mtx_invoke);
+	}
+	pthread_mutex_unlock(&m_mtx_invoke);
+
 	DEBUG_LEAVE("write16");
 }
 
@@ -493,6 +639,79 @@ void ZephyrCosim::boot_cpu() {
 }
 
 void ZephyrCosim::irq_handler() {
+	DEBUG_ENTER("irq_handler");
+
+	// TODO: what locking is needed here?
+
+	bool irqs_locked = m_irqs_locked;
+
+	if (irqs_locked) {
+		return;
+	}
+
+	if (_kernel.cpus[0].nested == 0) {
+		m_may_swap = false;
+	}
+
+	_kernel.cpus[0].nested++;
+
+	int irq_num;
+	while ((irq_num=next_pending_irq()) != -1) {
+		DEBUG_ENTER("irq_handler::irq %d", irq_num);
+
+		int32_t last_running_irq = m_running_irq;
+
+		// Acknowledge the pending-interrupt flag
+		m_irq_status &= ~(1ULL << irq_num);
+		m_irq_premask &= ~(1ULL << irq_num);
+
+//		sys_trace_isr_enter();
+
+		m_running_irq = irq_num;
+		if (m_irq_vector_table[irq_num].func == NULL) { /* LCOV_EXCL_BR_LINE */
+			/* LCOV_EXCL_START */
+			DEBUG("No function registered for IRQ %d", irq_num);
+			posix_print_error_and_exit("Received irq %i without a "
+						"registered handler\n",
+						irq_num);
+			/* LCOV_EXCL_STOP */
+		} else {
+			if (m_irq_vector_table[irq_num].flags & ISR_FLAG_DIRECT) {
+				DEBUG("Making a direct ISR call");
+				m_may_swap |= ((int (*)())m_irq_vector_table[irq_num].func)();
+			} else {
+	#ifdef CONFIG_PM
+				posix_irq_check_idle_exit();
+	#endif
+				DEBUG("Making a normal ISR call");
+				((void (*)(const void *))m_irq_vector_table[irq_num].func)
+						(m_irq_vector_table[irq_num].param);
+				m_may_swap = true;
+			}
+		}
+		m_running_irq = last_running_irq;
+
+//		sys_trace_isr_exit();
+		DEBUG_LEAVE("irq_handler::irq %d", irq_num);
+	}
+
+	_kernel.cpus[0].nested--;
+
+	/* Call swap if all the following is true:
+	 * 1) may_swap was enabled
+	 * 2) We are not nesting irq_handler calls (interrupts)
+	 * 3) Next thread to run in the ready queue is not this thread
+	 */
+	if (m_may_swap
+		/*&& (hw_irq_ctrl_get_cur_prio() == 256) */
+		&& (_kernel.ready_q.cache != _current)) {
+
+		DEBUG_ENTER("irq_handler::swap");
+		(void)z_swap_irqlock((uint32_t)irqs_locked);
+		DEBUG_LEAVE("irq_handler::swap");
+	}
+	DEBUG_LEAVE("irq_handler");
+
 #ifdef UNDEFINED
 	uint64_t irq_lock;
 	int irq_nbr;
@@ -541,6 +760,37 @@ void ZephyrCosim::irq_handler() {
 #endif
 }
 
+int32_t ZephyrCosim::next_pending_irq() {
+	DEBUG_ENTER("next_pending_irq: status=0x%08x", m_irq_status);
+	if (m_irqs_locked) {
+		DEBUG_LEAVE("next_pending_irq -- interrupts locked");
+		return -1;
+	}
+
+	int32_t winner = -1;
+	int32_t winner_prio = 256;
+
+	int32_t currently_running_prio = 10000;
+	uint32_t irq_num = 0;
+	uint32_t irq_status = m_irq_status;
+	while (irq_status) {
+		while (!(irq_status&1)) {
+			irq_status >>= 1;
+			irq_num += 1;
+		}
+
+		if ((winner_prio > (int)m_irq_prio[irq_num]) &&
+				(currently_running_prio > (int)m_irq_prio[irq_num])) {
+			winner = irq_num;
+			winner_prio = m_irq_prio[irq_num];
+		}
+		irq_status >>= 1;
+	}
+
+	DEBUG_LEAVE("next_pending_irq: status=0x%08x %d", m_irq_status, winner);
+	return winner;
+}
+
 void *ZephyrCosim::thread_w(void *zc_p) {
 	ZephyrCosim *zc = reinterpret_cast<ZephyrCosim *>(zc_p);
 	/* Ensure posix_boot_cpu has reached the cond loop */
@@ -583,6 +833,28 @@ void ZephyrCosim::req_invoke(
 	intptr_t							call_id,
 	tblink_rpc_core::IParamValVec		*params) {
 	DEBUG_ENTER("req_invoke");
+	if (method == m_sys_irq) {
+		DEBUG("Received IRQ");
+
+		DEBUG_ENTER("req_invoke::rsp");
+		pthread_mutex_lock(&m_mtx_invoke);
+		// Send an ack to the interrupt
+		ifinst->invoke_rsp(call_id, 0);
+		pthread_mutex_unlock(&m_mtx_invoke);
+		DEBUG_LEAVE("req_invoke::rsp");
+
+		DEBUG_ENTER("req_invoke::wake_cpu");
+		pthread_mutex_lock(&m_mtx_cpu);
+		// TODO: update interrupt-controller state
+		m_cpu_halted = false;
+		m_irq_status |= 1;
+		pthread_cond_broadcast(&m_cond_cpu);
+		pthread_mutex_unlock(&m_mtx_cpu);
+		DEBUG_LEAVE("req_invoke::wake_cpu");
+	} else {
+		fprintf(stdout, "ZephyrCosim Error: unknown method invocation\n");
+		fflush(stdout);
+	}
 
 	DEBUG_LEAVE("req_invoke");
 }

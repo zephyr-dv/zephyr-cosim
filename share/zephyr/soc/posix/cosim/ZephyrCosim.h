@@ -38,7 +38,7 @@ public:
 
 	void enable_irq(uint32_t irq);
 
-	bool irq_enabled(uint32_t irq) { return (m_irq_mask & (1ULL << irq)); }
+	bool irq_enabled(uint32_t irq);
 
 	void disable_irq(uint32_t irq);
 
@@ -77,6 +77,8 @@ private:
 
 	void irq_handler();
 
+	int32_t next_pending_irq();
+
 	static void *thread_w(void *);
 
 	void run_native_tasks(int level);
@@ -114,6 +116,7 @@ private:
 	pthread_t						m_zephyr_thread;
 	pthread_mutex_t					m_mtx_cpu;
 	pthread_cond_t					m_cond_cpu;
+
 	bool							m_cpu_halted;
 	bool							m_soc_terminate;
 
@@ -127,8 +130,10 @@ private:
 	uint64_t						m_irq_status;		// Pending interrupts
 	uint64_t						m_irq_premask;		// Interrupts before masking
 	uint64_t						m_irq_mask;
+	int32_t							m_running_irq;
 
 	bool							m_irqs_locked;
+	bool							m_may_swap;
 	bool							m_irq_lock_ignore;
 
 };

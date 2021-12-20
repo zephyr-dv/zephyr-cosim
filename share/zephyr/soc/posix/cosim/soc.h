@@ -9,7 +9,6 @@
 
 #include <toolchain.h>
 
-#include "posix_soc.h"
 #include "board_soc.h"
 
 #ifdef __cplusplus

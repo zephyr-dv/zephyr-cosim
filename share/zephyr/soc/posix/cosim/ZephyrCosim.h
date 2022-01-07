@@ -110,6 +110,7 @@ private:
 	tblink_rpc_core::IMethodType	*m_write32;
 	tblink_rpc_core::IMethodType	*m_sys_irq;
 
+	pthread_mutex_t					m_mtx_memrw;
 	pthread_mutex_t					m_mtx_invoke;
 	pthread_cond_t					m_cond_invoke;
 

@@ -72,6 +72,8 @@ ZephyrCosim::~ZephyrCosim() {
 int ZephyrCosim::run(int argc, char **argv) {
 	DEBUG_ENTER("run");
 
+	pthread_mutex_init(&m_mtx_memrw, 0);
+
 	pthread_mutex_init(&m_mtx_invoke, 0);
 	pthread_cond_init(&m_cond_invoke, 0);
 
@@ -241,6 +243,9 @@ int32_t ZephyrCosim::running_irq() {
 void ZephyrCosim::halt_cpu() {
 	DEBUG_ENTER("halt_cpu main_thread=0x%08x", z_main_thread.base.user_options);
 
+	DEBUG("z_main_thread.base_user_options=0x%08x",
+			z_main_thread.base.user_options);
+
 	if (!(z_main_thread.base.user_options & K_ESSENTIAL)) {
 		// The main thread has exited. Notify the connected
 		// simulator that we are complete
@@ -311,6 +316,7 @@ void ZephyrCosim::atomic_halt_cpu(uint32_t mask) {
 uint8_t ZephyrCosim::read8(mem_addr_t addr) {
 	DEBUG_ENTER("read8");
 
+	pthread_mutex_lock(&m_mtx_memrw);
 	IParamValVec *params = m_ifinst->mkValVec();
 	params->push_back(m_ifinst->mkValIntU(addr, 64));
 
@@ -336,6 +342,7 @@ uint8_t ZephyrCosim::read8(mem_addr_t addr) {
 	}
 	pthread_mutex_unlock(&m_mtx_invoke);
 
+	pthread_mutex_unlock(&m_mtx_memrw);
 	DEBUG_LEAVE("read8");
 	return ret;
 }
@@ -343,6 +350,8 @@ uint8_t ZephyrCosim::read8(mem_addr_t addr) {
 void ZephyrCosim::write8(uint8_t data, mem_addr_t addr) {
 	DEBUG_ENTER("write8");
 	// TODO: should acquire lock here
+
+	pthread_mutex_lock(&m_mtx_memrw);
 
 	IParamValVec *params = m_ifinst->mkValVec();
 	params->push_back(m_ifinst->mkValIntU(data, 32));
@@ -368,11 +377,15 @@ void ZephyrCosim::write8(uint8_t data, mem_addr_t addr) {
 	}
 	pthread_mutex_unlock(&m_mtx_invoke);
 
+	pthread_mutex_unlock(&m_mtx_memrw);
+
 	DEBUG_LEAVE("write8");
 }
 
 uint16_t ZephyrCosim::read16(mem_addr_t addr) {
 	DEBUG_ENTER("read16");
+
+	pthread_mutex_lock(&m_mtx_memrw);
 
 	IParamValVec *params = m_ifinst->mkValVec();
 	params->push_back(m_ifinst->mkValIntU(addr, 64));
@@ -399,6 +412,7 @@ uint16_t ZephyrCosim::read16(mem_addr_t addr) {
 	}
 	pthread_mutex_unlock(&m_mtx_invoke);
 
+	pthread_mutex_unlock(&m_mtx_memrw);
 	DEBUG_LEAVE("read16");
 	return ret;
 }
@@ -406,6 +420,8 @@ uint16_t ZephyrCosim::read16(mem_addr_t addr) {
 void ZephyrCosim::write16(uint16_t data, mem_addr_t addr) {
 	DEBUG_ENTER("write16");
 	// TODO: should acquire lock here
+
+	pthread_mutex_lock(&m_mtx_memrw);
 
 	IParamValVec *params = m_ifinst->mkValVec();
 	params->push_back(m_ifinst->mkValIntU(data, 32));
@@ -431,11 +447,15 @@ void ZephyrCosim::write16(uint16_t data, mem_addr_t addr) {
 	}
 	pthread_mutex_unlock(&m_mtx_invoke);
 
+	pthread_mutex_unlock(&m_mtx_memrw);
+
 	DEBUG_LEAVE("write16");
 }
 
 uint32_t ZephyrCosim::read32(mem_addr_t addr) {
 	DEBUG_ENTER("read32");
+
+	pthread_mutex_lock(&m_mtx_memrw);
 
 	IParamValVec *params = m_ifinst->mkValVec();
 	params->push_back(m_ifinst->mkValIntU(addr, 64));
@@ -462,6 +482,8 @@ uint32_t ZephyrCosim::read32(mem_addr_t addr) {
 	}
 	pthread_mutex_unlock(&m_mtx_invoke);
 
+	pthread_mutex_unlock(&m_mtx_memrw);
+
 	DEBUG_LEAVE("read32");
 	return ret;
 }
@@ -469,6 +491,8 @@ uint32_t ZephyrCosim::read32(mem_addr_t addr) {
 void ZephyrCosim::write32(uint32_t data, mem_addr_t addr) {
 	DEBUG_ENTER("write32");
 	// TODO: should acquire lock here
+
+	pthread_mutex_lock(&m_mtx_memrw);
 
 	IParamValVec *params = m_ifinst->mkValVec();
 	params->push_back(m_ifinst->mkValIntU(data, 32));
@@ -493,6 +517,8 @@ void ZephyrCosim::write32(uint32_t data, mem_addr_t addr) {
 		pthread_cond_wait(&m_cond_invoke, &m_mtx_invoke);
 	}
 	pthread_mutex_unlock(&m_mtx_invoke);
+
+	pthread_mutex_unlock(&m_mtx_memrw);
 
 	DEBUG_LEAVE("write32");
 }
@@ -846,6 +872,11 @@ void ZephyrCosim::message_processing_thread() {
 	// TODO: condition on 'running' ?
 	while (m_ep->process_one_message() != -1) {
 		;
+	}
+
+	if (!m_soc_terminate) {
+		DEBUG("Forcing process exit");
+		::exit(1);
 	}
 	DEBUG_LEAVE("message_processing_thread");
 }

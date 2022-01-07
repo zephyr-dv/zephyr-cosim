@@ -249,11 +249,56 @@ class zephyr_cosim_agent extends uvm_component;
 	task sys_write8(
 		input byte unsigned			data,
 		input longint unsigned		addr);
+		uvm_reg_bus_op rw_access;
+		uvm_sequence_item bus_req;
+		uvm_sequence_base seq = new("default_parent_seq");
+		$display("Agent sys_write8: 'h%08h 'h%08h", data, addr);
+
+		m_rw_lock.get(1);
+		
+		rw_access.kind    = UVM_WRITE;
+		rw_access.addr    = addr;
+		rw_access.data    = {data[7:0], data[7:0], data[7:0], data[7:0]};
+		rw_access.n_bits  = 8;
+		rw_access.byte_en = (1 << (addr&3));
+		$display("rw_access.byte_en: 'h%02h", rw_access.byte_en);
+
+		bus_req = m_adapter.reg2bus(rw_access);
+			
+		$display("[%0t] --> Seqr Access", $time);
+		seq.set_sequencer(m_seqr);
+		seq.start_item(bus_req);
+		seq.finish_item(bus_req);
+		$display("[%0t] <-- Seqr Access", $time);
+		
+		m_rw_lock.put(1);		
 	endtask
 
 	task sys_read16(
 		output shortint unsigned	data,
 		input longint unsigned		addr);
+		uvm_reg_bus_op rw_access;
+		uvm_sequence_item bus_req;
+		uvm_sequence_base seq = new("default_parent_seq");
+		$display("Agent sys_write8: 'h%08h 'h%08h", data, addr);
+
+		m_rw_lock.get(1);
+		
+		rw_access.kind    = UVM_WRITE;
+		rw_access.addr    = addr;
+		rw_access.data    = {data[15:0], data[15:0]};
+		rw_access.n_bits  = 8;
+		rw_access.byte_en = (2'b11 << ((addr&2) >> 1));
+
+		bus_req = m_adapter.reg2bus(rw_access);
+			
+		$display("[%0t] --> Seqr Access", $time);
+		seq.set_sequencer(m_seqr);
+		seq.start_item(bus_req);
+		seq.finish_item(bus_req);
+		$display("[%0t] <-- Seqr Access", $time);
+		
+		m_rw_lock.put(1);				
 	endtask
 		
 	task sys_write16(
